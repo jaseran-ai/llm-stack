@@ -1,0 +1,16 @@
+# ==============================================================================
+# Gatus Custom Endpoints Example (Declarative Extension Point)
+# ==============================================================================
+# To add private, local, or remote endpoints without modifying git-tracked files:
+# 1. Copy this file to gatus/endpoints.d/<name>.yaml
+# 2. gatus/endpoints.d/*.yaml is gitignored, keeping your private endpoints safe.
+# 3. Gatus automatically scans /config and merges all YAML files.
+# ==============================================================================
+
+endpoints:
+  - name: llama-server Remote GPU Engine
+    group: AI Core
+    url: "http://192.0.2.10:8090/health"
+    interval: 30s
+    conditions:
+      - "[STATUS] == 200"

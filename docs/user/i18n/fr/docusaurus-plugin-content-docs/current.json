@@ -1,0 +1,30 @@
+{
+  "version.label": {
+    "message": "Next",
+    "description": "The label for version current"
+  },
+  "sidebar.userSidebar.category.Getting Started": {
+    "message": "Getting Started",
+    "description": "The label for category 'Getting Started' in sidebar 'userSidebar'"
+  },
+  "sidebar.userSidebar.category.Tutorials": {
+    "message": "Tutorials",
+    "description": "The label for category 'Tutorials' in sidebar 'userSidebar'"
+  },
+  "sidebar.userSidebar.category.How-To Guides": {
+    "message": "How-To Guides",
+    "description": "The label for category 'How-To Guides' in sidebar 'userSidebar'"
+  },
+  "sidebar.userSidebar.category.Reference": {
+    "message": "Reference",
+    "description": "The label for category 'Reference' in sidebar 'userSidebar'"
+  },
+  "sidebar.userSidebar.category.Explanations": {
+    "message": "Explanations",
+    "description": "The label for category 'Explanations' in sidebar 'userSidebar'"
+  },
+  "sidebar.userSidebar.category.Release Notes": {
+    "message": "Release Notes",
+    "description": "The label for category 'Release Notes' in sidebar 'userSidebar'"
+  }
+}

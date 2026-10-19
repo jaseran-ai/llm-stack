@@ -1,0 +1,1268 @@
+name: llm-stack
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  open-webui:
+    logging: *default-logging
+    image: ghcr.io/open-webui/open-webui:v0.12.3@sha256:a537bbe1e6b428820f52ed4a029d7fff97062e24d5cf32c365fba36fd0542def
+    container_name: open-webui
+    # Healthcheck: provided upstream in image Dockerfile
+    # (CMD-SHELL curl --silent --fail http://localhost:${PORT:-8080}/health | jq -ne 'input.status == true' || exit 1)
+    ports:
+      - 127.0.0.1:${OPEN_WEBUI_PORT}:8080
+    env_file:
+      - ./vault/secrets_ram/open-webui.env
+    volumes:
+      - open-webui:/app/backend/data
+    environment:
+      - OPENAI_API_BASE_URL=http://litellm:4000/v1
+      - ENABLE_WEB_SEARCH=True
+      - WEB_SEARCH_ENGINE=searxng
+      - SEARXNG_QUERY_URL=http://searxng:8080/search?q=<query>
+      - SEARXNG_LANGUAGE=all
+      - VECTOR_DB=qdrant
+      - ENABLE_QDRANT_MULTITENANCY_MODE=True
+      - QDRANT_URI=http://qdrant:6333
+      - WEBUI_AUTH_TRUSTED_EMAIL_HEADER=X-Authentik-Email
+      - WEBUI_AUTH_TRUSTED_NAME_HEADER=X-Authentik-Name
+      - DEFAULT_USER_ROLE=user
+      - ENABLE_OAUTH_SIGNUP=True
+      # lfm2.5-thinking-1.2b runs on the ollama service (CPU-only, no GPU dependency), so it
+      # is the only model guaranteed to work immediately after `docker compose up -d` on any
+      # machine - see ollama/README.md.
+      - DEFAULT_MODELS=lfm2.5-thinking-1.2b
+      # This small CPU-only model has no natural stopping point for open-ended prompts
+      # (confirmed empirically: a single completion ran past 1000 tokens / 20+ minutes with no
+      # bound). Open WebUI's auxiliary background generation tasks each trigger an additional,
+      # separate, equally unbounded LLM call per message - disabled here since they add
+      # significant latency for little benefit on a small bundled model. See ollama/README.md.
+      - ENABLE_TITLE_GENERATION=False
+      - ENABLE_TAGS_GENERATION=False
+      - ENABLE_FOLLOW_UP_GENERATION=False
+      - ENABLE_SEARCH_QUERY_GENERATION=False
+      - ENABLE_RETRIEVAL_QUERY_GENERATION=True
+    depends_on:
+      vault-agent:
+        condition: service_healthy
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.chat.rule=Host(`chat.${DOMAIN}`)"
+      - "traefik.http.routers.chat.entrypoints=websecure"
+      - "traefik.http.routers.chat.middlewares=authentik-auth@file"
+      - "traefik.http.routers.chat-http.rule=Host(`chat.${DOMAIN}`)"
+      - "traefik.http.routers.chat-http.entrypoints=web"
+      - "traefik.http.routers.chat-http.middlewares=authentik-auth@file"
+      - "traefik.http.services.chat.loadbalancer.server.port=8080"
+    restart: unless-stopped
+    networks:
+      - default
+      - internal-backend
+    deploy:
+      resources:
+        limits:
+          memory: 1536M
+  postgres:
+    logging: *default-logging
+    image: postgres:18.6@sha256:74935e72241653ca55e0414067e6d8763aceb8a810eb51b452253ec3dcfc4336
+    container_name: postgres
+    restart: always
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 3s
+      timeout: 5s
+      retries: 10
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: postgres
+    ports:
+      - 127.0.0.1:5432:5432
+    volumes:
+      # PostgreSQL 18+ changed its expected mount point from /var/lib/postgresql/data (the
+      # convention every prior major version used) to /var/lib/postgresql itself (data now
+      # lives in a version-specific subdirectory the image manages, matching pg_ctlcluster's
+      # own layout - see https://github.com/docker-library/postgres/pull/1259). Mounting the
+      # old path with 18+ makes the entrypoint refuse to start as a safety check, even
+      # against a genuinely empty volume.
+      - postgres_data:/var/lib/postgresql
+      - ./init-dbs.sql:/docker-entrypoint-initdb.d/init-dbs.sql
+    networks:
+      - internal-backend
+    deploy:
+      resources:
+        limits:
+          memory: 1024M
+  ollama:
+    logging: *default-logging
+    image: ollama/ollama:0.40.5@sha256:5d3a2f25f9825628daba94dc0b1d421c7d57d6c03ae5faa9ba050e058bab8241
+    container_name: ollama
+    restart: unless-stopped
+    # No GPU reservation on purpose: this is meant to run on the widest possible range of
+    # machines out of the box, with zero configuration. Ollama auto-detects and uses a GPU if
+    # one is actually available to the container, but nothing here requires it - the model
+    # chosen (lfm2.5-thinking:1.2b, ~731MB) is deliberately small enough to run comfortably on
+    # CPU alone. This is the ONLY inference backend in the stack: every model in
+    # litellm/litellm-config.yaml is an alias of this single weight - the project has no
+    # external hardware dependency at all (it used to depend on "llama-server", a GPU backend
+    # on a separate physical machine; that dependency has been fully removed).
+    ports:
+      - "127.0.0.1:11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    healthcheck:
+      # The official Ollama image has neither curl nor wget: use /dev/tcp (a bash builtin,
+      # confirmed present in this image) to make a real HTTP request with no external
+      # dependency, same pattern as Qdrant's healthcheck below.
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/localhost/11434; printf 'GET / HTTP/1.0\\r\\n\\r\\n' >&3; grep -q '200 OK' <&3"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+    deploy:
+      resources:
+        limits:
+          memory: 2048M
+
+  litellm:
+    logging: *default-logging
+    image: ghcr.io/berriai/litellm:v1.105.1@sha256:b7b9e2c306343721802253d0dd9436b9634a2eb4e14da7c7cf06c5c7b7530802
+    container_name: litellm
+    restart: unless-stopped
+    env_file:
+      - litellm/litellm.env
+      - ./vault/secrets_ram/litellm.env
+    volumes:
+      - ./litellm/litellm-config.yaml:/config.yaml
+      - ./litellm/custom_models.yaml:/custom_models.yaml
+    command:
+      - "--config=/config.yaml"
+    ports:
+      # Bound to localhost (127.0.0.1) only - never 0.0.0.0.
+      # External traffic reaches LiteLLM via Traefik (litellm.${DOMAIN}) with TLS termination.
+      # Internal services reach LiteLLM via Docker DNS (http://litellm:4000).
+      # If external LAN access without Traefik is needed, configure via docker-compose.override.yml.
+      - "127.0.0.1:${LITELLM_PORT}:4000"
+    environment:
+      STORE_MODEL_IN_DB: "True" # allows adding models to proxy via UI
+      PROXY_BASE_URL: "https://litellm.${DOMAIN}"
+      UI_USERNAME: "admin"
+      GENERIC_CLIENT_ID: "litellm"
+      GENERIC_AUTHORIZATION_ENDPOINT: "https://authentik.${DOMAIN}/application/o/authorize/"
+      GENERIC_TOKEN_ENDPOINT: "http://authentik-server:9000/application/o/token/"
+      GENERIC_USERINFO_ENDPOINT: "http://authentik-server:9000/application/o/userinfo/"
+      # Requests the custom "litellm_role" scope (authentik/blueprints/20-native-oidc.yaml)
+      # in addition to LiteLLM's own defaults, and maps it to LiteLLM's native
+      # role concept - proxy_admin for anyone in Authentik's "admins" group, assigned by
+      # Authentik itself on every single login (not just when the LiteLLM_UserTable row is
+      # first created, unlike UI_ADMIN_USERS/PROXY_ADMIN_AT_LOG_IN below, kept here too as a
+      # harmless, agreeing belt-and-suspenders for the row-creation moment specifically).
+      GENERIC_SCOPE: "openid profile email litellm_role"
+      GENERIC_USER_ROLE_ATTRIBUTE: "litellm_role"
+      OAUTHLIB_INSECURE_TRANSPORT: "1"
+      LITELLM_PROXY_ADMIN_EMAIL: "admin@example.com,admin"
+      UI_ADMIN_USERS: "admin@example.com,admin"
+      PROXY_ADMIN_AT_LOG_IN: "true"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      ollama:
+        condition: service_healthy
+      vault-agent:
+        condition: service_healthy
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.litellm.rule=Host(`litellm.${DOMAIN}`)"
+      - "traefik.http.routers.litellm.entrypoints=websecure"
+      - "traefik.http.routers.litellm.middlewares=litellm-docs-redirect@file"
+      - "traefik.http.routers.litellm-http.rule=Host(`litellm.${DOMAIN}`)"
+      - "traefik.http.routers.litellm-http.entrypoints=web"
+      - "traefik.http.routers.litellm-http.middlewares=litellm-docs-redirect@file"
+      - "traefik.http.services.litellm.loadbalancer.server.port=4000"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+      - "litellm.${DOMAIN}:host-gateway"
+    healthcheck:  # Defines the health check configuration for the container
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:4000/health/liveliness')"]  # Command to execute for health check
+      interval: 30s  # Perform health check every 30 seconds
+      timeout: 10s   # Health check command times out after 10 seconds
+      retries: 3     # Retry up to 3 times if health check fails
+      # A clean database requires LiteLLM to run its complete Prisma migration history before
+      # Uvicorn starts. The observed CPU-only UAT cold start takes about 90 seconds; this grace
+      # period prevents those expected connection refusals from exhausting the retry budget.
+      # Successful probes still mark the container healthy immediately.
+      start_period: 180s
+    networks:
+      - default
+      - internal-backend
+    deploy:
+      resources:
+        limits:
+          memory: 2048M
+  prometheus:
+    logging: *default-logging
+    image: prom/prometheus:v3.15.0@sha256:efd719c99d83b060d9daefdcf00360461adf279f45ef5391f8d111892118753e
+    container_name: prometheus
+    volumes:
+      - prometheus_data:/prometheus
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./prometheus/rules:/etc/prometheus/rules:ro
+      - ./prometheus/targets.d:/etc/prometheus/targets.d:ro
+    ports:
+      - "127.0.0.1:9190:9090"
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:9090/-/healthy"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--storage.tsdb.retention.time=15d"
+      - "--web.enable-lifecycle"
+    restart: always
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+
+  alertmanager:
+    logging: *default-logging
+    image: prom/alertmanager:v0.34.1@sha256:e9733bafb1bdef9b00e25a21f8f99dc26a22224bf16641ad754d1649f4c3357a
+    container_name: alertmanager
+    restart: unless-stopped
+    volumes:
+      - alertmanager_data:/alertmanager
+      - ./prometheus/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+    ports:
+      - "127.0.0.1:9093:9093"
+    command:
+      - "--config.file=/etc/alertmanager/alertmanager.yml"
+      - "--storage.path=/alertmanager"
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:9093/-/healthy"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.alertmanager.rule=Host(`alertmanager.${DOMAIN}`)"
+      - "traefik.http.routers.alertmanager.entrypoints=websecure"
+      - "traefik.http.routers.alertmanager.tls=true"
+      - "traefik.http.routers.alertmanager.middlewares=authentik-auth@file"
+      - "traefik.http.routers.alertmanager-http.rule=Host(`alertmanager.${DOMAIN}`)"
+      - "traefik.http.routers.alertmanager-http.entrypoints=web"
+      - "traefik.http.routers.alertmanager-http.middlewares=authentik-auth@file"
+      - "traefik.http.services.alertmanager.loadbalancer.server.port=9093"
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+# Make sure to update the credential placeholders with your own secrets.
+# We mark them with # CHANGEME in the file below.
+# In addition, we recommend to restrict inbound traffic on the host to langfuse-web (port 3000) and minio (port 9090) only.
+# All other components are bound to localhost (127.0.0.1) to only accept connections from the local machine.
+# External connections from other machines will not be able to reach these services directly.
+  vault:
+    logging: *default-logging
+    image: hashicorp/vault:2.2.0@sha256:e0acd3c681bdf57f002d7214e5d050b876e1704678005c6b0406dd96a65be919
+    container_name: vault
+    restart: always
+    cap_add:
+      - IPC_LOCK
+    command: ["server", "-config=/etc/vault/config.hcl"]
+    environment:
+      - VAULT_ADDR=https://127.0.0.1:8200
+      - VAULT_CACERT=/etc/vault/certs/tls.crt
+    volumes:
+      - ./vault/config.hcl:/etc/vault/config.hcl:ro
+      - ./traefik/certs:/etc/vault/certs:ro
+      - vault_data:/vault/data
+    ports:
+      - 127.0.0.1:8201:8200
+    healthcheck:
+      test: ["CMD", "vault", "status", "-ca-cert=/etc/vault/certs/tls.crt"]
+      interval: 2s
+      timeout: 2s
+      retries: 10
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.vault.rule=Host(`vault.${DOMAIN}`)"
+      - "traefik.http.routers.vault.entrypoints=websecure"
+      - "traefik.http.routers.vault-http.rule=Host(`vault.${DOMAIN}`)"
+      - "traefik.http.routers.vault-http.entrypoints=web"
+      - "traefik.http.services.vault.loadbalancer.server.port=8200"
+      - "traefik.http.services.vault.loadbalancer.server.scheme=https"
+      - "traefik.http.services.vault.loadbalancer.serversTransport=vault-transport@file"
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+
+  vault-agent:
+    logging: *default-logging
+    image: hashicorp/vault:2.2.0@sha256:e0acd3c681bdf57f002d7214e5d050b876e1704678005c6b0406dd96a65be919
+    container_name: vault-agent
+    restart: always
+    user: "${SECRETS_RAM_UID}:${SECRETS_RENDER_GID}"
+    cap_add:
+      - IPC_LOCK
+    environment:
+      - VAULT_ADDR=https://vault:8200
+      - VAULT_CACERT=/etc/vault/certs/tls.crt
+    command: ["vault", "agent", "-config=/etc/vault/agent-config.hcl"]
+    volumes:
+      - ./vault/agent-config.hcl:/etc/vault/agent-config.hcl:ro
+      - ./traefik/certs:/etc/vault/certs:ro
+      - ./vault/templates:/etc/vault/templates:ro
+      - ./vault/secrets_ram:/run/secrets
+    depends_on:
+      vault:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "grep -Eq '^ALICE_PASSWORD=.+' /run/secrets/authentik.env && grep -Eq '^BOB_PASSWORD=.+' /run/secrets/authentik.env && test -f /run/secrets/langfuse.env && test -f /run/secrets/litellm.env && test -f /run/secrets/open-webui.env && test -f /run/secrets/grafana.env && test -f /run/secrets/qdrant.env && test -f /run/secrets/chouse-ui.env"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+
+  langfuse-worker:
+    logging: *default-logging
+    image: langfuse/langfuse-worker:4.63.0@sha256:ca32a8fb2a214c7b5f42dd9c540c8072e41db659cb621f317911ce695ad6bca2
+    container_name: langfuse-worker
+    restart: always
+    env_file:
+      - ./vault/secrets_ram/langfuse.env
+    depends_on: &langfuse-depends-on
+      postgres:
+        condition: service_healthy
+      seaweedfs:
+        condition: service_started
+      redis:
+        condition: service_healthy
+      clickhouse:
+        condition: service_healthy
+      vault-agent:
+        condition: service_healthy
+    ports:
+      - 127.0.0.1:3030:3030
+    healthcheck:
+      # langfuse-worker's Next.js server binds only to the container's own network IP, not
+      # 127.0.0.1/localhost (confirmed via netstat) - resolve it dynamically at check time.
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://$$HOSTNAME:3030/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 60s
+    networks:
+      - default
+      - internal-backend
+    deploy:
+      resources:
+        limits:
+          memory: 2048M
+    environment: &langfuse-worker-env
+      NODE_ENV: production
+      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD}@postgres:5432/langfuse
+      TELEMETRY_ENABLED: ${TELEMETRY_ENABLED}
+      LANGFUSE_ENABLE_EXPERIMENTAL_FEATURES: ${LANGFUSE_ENABLE_EXPERIMENTAL_FEATURES}
+      CLICKHOUSE_MIGRATION_URL: clickhouse://clickhouse:${CLICKHOUSE_PASSWORD}@clickhouse:9000
+      CLICKHOUSE_URL: ${CLICKHOUSE_URL}
+      CLICKHOUSE_USER: ${CLICKHOUSE_USER}
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD}
+      CLICKHOUSE_CLUSTER_ENABLED: ${CLICKHOUSE_CLUSTER_ENABLED}
+      LANGFUSE_USE_AZURE_BLOB: ${LANGFUSE_USE_AZURE_BLOB}
+      LANGFUSE_S3_EVENT_UPLOAD_BUCKET: ${LANGFUSE_S3_EVENT_UPLOAD_BUCKET}
+      LANGFUSE_S3_EVENT_UPLOAD_REGION: ${LANGFUSE_S3_EVENT_UPLOAD_REGION}
+      LANGFUSE_S3_EVENT_UPLOAD_ENDPOINT: ${LANGFUSE_S3_EVENT_UPLOAD_ENDPOINT}
+      LANGFUSE_S3_EVENT_UPLOAD_FORCE_PATH_STYLE: ${LANGFUSE_S3_EVENT_UPLOAD_FORCE_PATH_STYLE}
+      LANGFUSE_S3_EVENT_UPLOAD_PREFIX: ${LANGFUSE_S3_EVENT_UPLOAD_PREFIX}
+      LANGFUSE_S3_MEDIA_UPLOAD_BUCKET: ${LANGFUSE_S3_MEDIA_UPLOAD_BUCKET}
+      LANGFUSE_S3_MEDIA_UPLOAD_REGION: ${LANGFUSE_S3_MEDIA_UPLOAD_REGION}
+      LANGFUSE_S3_MEDIA_UPLOAD_ENDPOINT: ${LANGFUSE_S3_MEDIA_UPLOAD_ENDPOINT}
+      LANGFUSE_S3_MEDIA_UPLOAD_FORCE_PATH_STYLE: ${LANGFUSE_S3_MEDIA_UPLOAD_FORCE_PATH_STYLE}
+      LANGFUSE_S3_MEDIA_UPLOAD_PREFIX: ${LANGFUSE_S3_MEDIA_UPLOAD_PREFIX}
+      LANGFUSE_S3_BATCH_EXPORT_ENABLED: ${LANGFUSE_S3_BATCH_EXPORT_ENABLED}
+      LANGFUSE_S3_BATCH_EXPORT_BUCKET: ${LANGFUSE_S3_BATCH_EXPORT_BUCKET}
+      LANGFUSE_S3_BATCH_EXPORT_PREFIX: ${LANGFUSE_S3_BATCH_EXPORT_PREFIX}
+      LANGFUSE_S3_BATCH_EXPORT_REGION: ${LANGFUSE_S3_BATCH_EXPORT_REGION}
+      LANGFUSE_S3_BATCH_EXPORT_ENDPOINT: ${LANGFUSE_S3_BATCH_EXPORT_ENDPOINT}
+      LANGFUSE_S3_BATCH_EXPORT_EXTERNAL_ENDPOINT: ${LANGFUSE_S3_BATCH_EXPORT_EXTERNAL_ENDPOINT}
+      LANGFUSE_S3_BATCH_EXPORT_FORCE_PATH_STYLE: ${LANGFUSE_S3_BATCH_EXPORT_FORCE_PATH_STYLE}
+      NODE_OPTIONS: "--max-old-space-size=1536"
+      REDIS_HOST: ${REDIS_HOST}
+      REDIS_PORT: ${REDIS_PORT}
+      REDIS_TLS_ENABLED: ${REDIS_TLS_ENABLED}
+      REDIS_TLS_CA: ${REDIS_TLS_CA}
+      REDIS_TLS_CERT: ${REDIS_TLS_CERT}
+      REDIS_TLS_KEY: ${REDIS_TLS_KEY}
+
+  langfuse-web:
+    logging: *default-logging
+    image: langfuse/langfuse:4.63.0@sha256:67f48d12a190e4ad585249c75ae1ce172b449de3dbbe7486b8179cd28e21408e
+    container_name: langfuse-web
+    restart: always
+    env_file:
+      - ./vault/secrets_ram/langfuse.env
+    volumes:
+      - ./traefik/certs/tls.crt:/etc/ssl/certs/local-ca.crt:ro
+    depends_on: *langfuse-depends-on
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.langfuse.rule=Host(`langfuse.${DOMAIN}`)"
+      - "traefik.http.routers.langfuse.entrypoints=websecure"
+      - "traefik.http.routers.langfuse-http.rule=Host(`langfuse.${DOMAIN}`)"
+      - "traefik.http.routers.langfuse-http.entrypoints=web"
+      - "traefik.http.services.langfuse.loadbalancer.server.port=3000"
+    ports:
+      - 127.0.0.1:3000:3000
+    healthcheck:
+      # langfuse-web's Next.js server binds only to the container's own network IP, not
+      # 127.0.0.1/localhost (confirmed via netstat) - resolve it dynamically at check time.
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://$$HOSTNAME:3000/api/public/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 60s
+    extra_hosts:
+      - "${DOMAIN}:host-gateway"
+      - "langfuse.${DOMAIN}:host-gateway"
+    networks:
+      - default
+      - internal-backend
+    deploy:
+      resources:
+        limits:
+          memory: 2048M
+    environment:
+      <<: *langfuse-worker-env
+      HOSTNAME: "0.0.0.0"
+      PORT: "3000"
+      NEXTAUTH_URL: https://langfuse.${DOMAIN}
+      NEXTAUTH_DEBUG: "false"
+      AUTH_TRUST_HOST: "true"
+      AUTH_DISABLE_USERNAME_PASSWORD: "false"
+      AUTH_CUSTOM_NAME: "Authentik SSO"
+      AUTH_CUSTOM_CLIENT_ID: "langfuse"
+      AUTH_CUSTOM_ISSUER: "https://authentik.${DOMAIN}/application/o/langfuse"
+      # Authentik signs ID tokens with HS256 by default (no RSA signing_key configured on the
+      # provider) - without this, openid-client defaults to expecting RS256 and rejects every
+      # token exchange with "unexpected JWT alg received, expected RS256, got: HS256".
+      AUTH_CUSTOM_ID_TOKEN_SIGNED_RESPONSE_ALG: "HS256"
+      # Needed because migrating from Authelia to Authentik means the SAME email now comes
+      # through a new OAuth "sub" (Authentik's own, different from Authelia's) under the same
+      # "custom" provider id - Auth.js treats it as an unlinked account otherwise
+      # (OAuthAccountNotLinked), even though it's the same physical user.
+      AUTH_CUSTOM_ALLOW_ACCOUNT_LINKING: "true"
+      NODE_EXTRA_CA_CERTS: "/etc/ssl/certs/local-ca.crt"
+      LANGFUSE_INIT_ORG_ID: ${LANGFUSE_INIT_ORG_ID}
+      LANGFUSE_INIT_ORG_NAME: ${LANGFUSE_INIT_ORG_NAME}
+      LANGFUSE_INIT_PROJECT_ID: ${LANGFUSE_INIT_PROJECT_ID}
+      LANGFUSE_INIT_PROJECT_NAME: ${LANGFUSE_INIT_PROJECT_NAME}
+
+  clickhouse:
+    logging: *default-logging
+    image: clickhouse/clickhouse-server@sha256:a50b4a1579a003e05fd41c9873ef6d20055013c3be20d0d3d4129ab958d9d137 # 26.7
+    container_name: clickhouse
+    restart: always
+    user: "101:101"
+    environment:
+      CLICKHOUSE_DB: default
+      CLICKHOUSE_USER: clickhouse
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD}
+    volumes:
+      - langfuse_clickhouse_data:/var/lib/clickhouse
+      - langfuse_clickhouse_logs:/var/log/clickhouse-server
+    ports:
+      - 127.0.0.1:8123:8123
+    healthcheck:
+      test: wget --no-verbose --tries=1 --spider http://localhost:8123/ping || exit 1
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 1s
+    networks:
+      - default
+      - internal-backend
+    deploy:
+      resources:
+        limits:
+          memory: 2048M
+
+  redis:
+    logging: *default-logging
+    image: redis@sha256:344e3945a0b431c8ff1eecd58c5573538126bd756f02fc7e218ddf1fc2546366 # 8.10.0
+    container_name: redis
+    restart: always
+    env_file:
+      - ./vault/secrets_ram/langfuse.env
+    depends_on:
+      vault-agent:
+        condition: service_healthy
+    entrypoint: ["sh", "-c", "printf 'requirepass %s\\nsave 60 1\\nloglevel warning\\n' \"$$REDIS_AUTH\" | exec redis-server -"]
+    ports:
+      - 127.0.0.1:6379:6379
+    healthcheck:
+      test: ["CMD-SHELL", "REDISCLI_AUTH=\"$$REDIS_AUTH\" redis-cli ping | grep PONG"]
+      interval: 3s
+      timeout: 10s
+      retries: 10
+    networks:
+      - internal-backend
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+
+  dozzle:
+    logging: *default-logging
+    image: amir20/dozzle:v11.3.2@sha256:0d8cf9702f422d65a7e8ad238785dc6b05b2b9c43c945f6bbdf3358ad5da5f6c
+    container_name: dozzle
+    restart: unless-stopped
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    ports:
+      - 127.0.0.1:8081:8080
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.dozzle.rule=Host(`logs.${DOMAIN}`)"
+      - "traefik.http.routers.dozzle.entrypoints=websecure"
+      - "traefik.http.routers.dozzle.middlewares=authentik-auth@file"
+      - "traefik.http.routers.dozzle-http.rule=Host(`logs.${DOMAIN}`)"
+      - "traefik.http.routers.dozzle-http.entrypoints=web"
+      - "traefik.http.routers.dozzle-http.middlewares=authentik-auth@file"
+      - "traefik.http.services.dozzle.loadbalancer.server.port=8080"
+    healthcheck:
+      test: ["CMD", "/dozzle", "healthcheck"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    environment:
+      - DOZZLE_ENABLE_ACTIONS=false
+      - DOZZLE_ENABLE_SHELL=false
+      - DOZZLE_NO_ANALYTICS=true
+      - DOZZLE_AUTH_PROVIDER=forward-proxy
+      - DOZZLE_AUTH_HEADER_USER=X-Authentik-Username
+      - DOZZLE_AUTH_HEADER_EMAIL=X-Authentik-Email
+      - DOZZLE_AUTH_HEADER_NAME=X-Authentik-Name
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+
+  grafana:
+    logging: *default-logging
+    image: grafana/grafana:13.2.4@sha256:dbbc38ea21103cefb50396340cd88afec779c7e070b0a7bf5a75b4ce46651d3f
+    container_name: grafana
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3001:3000"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    env_file:
+      - ./vault/secrets_ram/grafana.env
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning
+      - ./grafana/dashboards:/etc/grafana/provisioning/dashboards/json
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_SERVER_ROOT_URL=https://grafana.${DOMAIN}
+      - GF_AUTH_PROXY_ENABLED=true
+      - GF_AUTH_PROXY_HEADER_NAME=X-Authentik-Username
+      - GF_AUTH_PROXY_HEADER_PROPERTY=username
+      - GF_AUTH_PROXY_AUTO_SIGN_UP=true
+      - GF_AUTH_DISABLE_LOGIN_FORM=true
+      - GF_AUTH_PROXY_ENABLE_LOGIN_TOKEN=false
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.grafana.rule=Host(`grafana.${DOMAIN}`)"
+      - "traefik.http.routers.grafana.entrypoints=websecure"
+      - "traefik.http.routers.grafana.middlewares=authentik-auth@file"
+      - "traefik.http.routers.grafana-http.rule=Host(`grafana.${DOMAIN}`)"
+      - "traefik.http.routers.grafana-http.entrypoints=web"
+      - "traefik.http.routers.grafana-http.middlewares=authentik-auth@file"
+      - "traefik.http.services.grafana.loadbalancer.server.port=3000"
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+
+  searxng:
+    logging: *default-logging
+    image: searxng/searxng@sha256:3602e6ddbeba037f5d800d1ed9d296a8b93c9f5b3cf9d05fa179d0e766dd59a1 # 2026.8.28-a30b2d474
+    container_name: searxng
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8082:8080"
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+    volumes:
+      - ./searxng/settings.yml:/etc/searxng/settings.yml:ro
+    environment:
+      - SEARXNG_BASE_URL=http://localhost:8082/
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.searxng.rule=Host(`searxng.${DOMAIN}`)"
+      - "traefik.http.routers.searxng.entrypoints=websecure"
+      - "traefik.http.routers.searxng.middlewares=authentik-auth@file"
+      - "traefik.http.routers.searxng-http.rule=Host(`searxng.${DOMAIN}`)"
+      - "traefik.http.routers.searxng-http.entrypoints=web"
+      - "traefik.http.routers.searxng-http.middlewares=authentik-auth@file"
+      - "traefik.http.services.searxng.loadbalancer.server.port=8080"
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+
+  qdrant:
+    logging: *default-logging
+    image: qdrant/qdrant:v1.19.2@sha256:b7b0444c4c351c970b98e90a6f89c2ee4287c65b44e52b4cb503fa5b2aa927ad
+    container_name: qdrant
+    restart: unless-stopped
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.qdrant.rule=Host(`qdrant.${DOMAIN}`)"
+      - "traefik.http.routers.qdrant.entrypoints=websecure"
+      - "traefik.http.routers.qdrant.middlewares=authentik-auth@file"
+      - "traefik.http.routers.qdrant-http.rule=Host(`qdrant.${DOMAIN}`)"
+      - "traefik.http.routers.qdrant-http.entrypoints=web"
+      - "traefik.http.routers.qdrant-http.middlewares=authentik-auth@file"
+      - "traefik.http.services.qdrant.loadbalancer.server.port=6333"
+    ports:
+      - "127.0.0.1:6333:6333"
+      - "127.0.0.1:6334:6334"
+    env_file:
+      - ./vault/secrets_ram/qdrant.env
+    volumes:
+      - qdrant_data:/qdrant/storage
+    healthcheck:
+      # The official Qdrant image has neither curl nor wget: we use /dev/tcp (a bash builtin)
+      # to make a real HTTP request with no external dependency.
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/localhost/6333; printf 'GET /healthz HTTP/1.0\\r\\n\\r\\n' >&3; grep -q '200 OK' <&3"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+
+  seaweedfs:
+    logging: *default-logging
+    image: chrislusf/seaweedfs:4.48@sha256:4e61d15fd35994cb1e43e1e553dff106794841fd9a99ade2fc8c8bfce4d7872d
+    container_name: seaweedfs
+    restart: unless-stopped
+    command: "server -s3 -s3.config=/run/secrets/s3.json -s3.port=8333 -dir=/data"
+    depends_on:
+      vault-agent:
+        condition: service_healthy
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.s3.rule=Host(`s3.${DOMAIN}`)"
+      - "traefik.http.routers.s3.entrypoints=websecure"
+      - "traefik.http.routers.s3.service=seaweedfs-s3"
+      - "traefik.http.routers.s3-http.rule=Host(`s3.${DOMAIN}`)"
+      - "traefik.http.routers.s3-http.entrypoints=web"
+      - "traefik.http.routers.s3-http.service=seaweedfs-s3"
+      - "traefik.http.services.seaweedfs-s3.loadbalancer.server.port=8333"
+      - "traefik.http.routers.s3-console.rule=Host(`s3-console.${DOMAIN}`)"
+      - "traefik.http.routers.s3-console.entrypoints=websecure"
+      - "traefik.http.routers.s3-console.middlewares=authentik-auth@file"
+      - "traefik.http.routers.s3-console.service=seaweedfs-console"
+      - "traefik.http.routers.s3-console-http.rule=Host(`s3-console.${DOMAIN}`)"
+      - "traefik.http.routers.s3-console-http.entrypoints=web"
+      - "traefik.http.routers.s3-console-http.middlewares=authentik-auth@file"
+      - "traefik.http.routers.s3-console-http.service=seaweedfs-console"
+      - "traefik.http.services.seaweedfs-console.loadbalancer.server.port=8888"
+    ports:
+      - "127.0.0.1:8333:8333"
+      - "127.0.0.1:9333:9333"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9333/cluster/status"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+    volumes:
+      - ./vault/secrets_ram/s3.json:/run/secrets/s3.json:ro
+      - seaweedfs_data:/data
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+
+  loki:
+    logging: *default-logging
+    image: grafana/loki:3.7.8@sha256:1107dd5274e0ada47e42472b7a7e71f3b2a2fe878878108f3e2f9e51528f0193
+    container_name: loki
+    restart: unless-stopped
+    user: "0:0"
+    ports:
+      - "127.0.0.1:3100:3100"
+    # No Docker healthcheck: confirmed empirically that grafana/loki's image became fully
+    # distroless as of (at least) 3.7.4 - no shell, no wget/curl, not even /bin/sh - there is
+    # literally no binary in the image besides `loki` itself to exec a check with. The
+    # previous wget-based healthcheck (working fine on 3.4.2) silently broke on this bump,
+    # surfacing as "unhealthy" with "wget: executable file not found in $PATH" in
+    # `docker inspect`'s health log. Real log delivery is still verified end-to-end by
+    # smoke_test.sh's "Loki Log Ingestion" test, from outside the container over the network.
+    command: -config.file=/etc/loki/loki-config.yml -ingester.wal-disk-full-threshold=0.98
+    volumes:
+      - ./loki/loki-config.yml:/etc/loki/loki-config.yml:ro
+      - loki_data:/loki
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+
+  vector:
+    logging: *default-logging
+    image: timberio/vector@sha256:874ae2198edef0009a055b62a6cab9df3a824aaadd37cb6a991c2f55dda90e8d # latest-alpine as of 2026-08-08
+    container_name: vector
+    user: "root"
+    command: ["--config", "/etc/vector/vector.yaml"]
+    restart: unless-stopped
+    healthcheck:
+      # Vector's internal API (needed for a real HTTP health endpoint) isn't enabled in
+      # vector.yml, so this is a plain liveness check that the main process is still running.
+      test: ["CMD", "pgrep", "vector"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    volumes:
+      - ./vector/vector.yml:/etc/vector/vector.yaml:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    depends_on:
+      - loki
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+
+  cadvisor:
+    logging: *default-logging
+    # ghcr.io/google/cadvisor, not gcr.io/cadvisor/cadvisor: upstream moved registries as of
+    # v0.53.0 (gcr.io/cadvisor/cadvisor is only documented for versions prior to that) - the
+    # old registry still resolves for v0.55.1 but stopped receiving newer tags/patches.
+    image: ghcr.io/google/cadvisor:v0.60.6@sha256:b8e7d1093144fd088f425ff003d75a4aa405de075db78dae3bc563730b1bd07a
+    container_name: cadvisor
+    # Healthcheck: provided upstream in image Dockerfile (CMD-SHELL /usr/bin/healthcheck.sh)
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8083:8080"
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+      - /dev/disk/:/dev/disk:ro
+    command:
+      - "--docker_only=true"
+      - "--housekeeping_interval=10s"
+      - "--max_housekeeping_interval=15s"
+      - "--disable_metrics=disk,diskIO,tcp,udp,percpu,sched,process"
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+
+  gatus:
+    logging: *default-logging
+    image: twinproduction/gatus:v5.37.0@sha256:094eb186e55235db367e90e9d56140e5897b7044c41de23cde4cc18e6da1242e
+    container_name: gatus
+    # No Docker healthcheck: distroless scratch Go image; Gatus is the monitoring engine itself
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3005:8080"
+    environment:
+      GATUS_CONFIG_PATH: "/config"
+    volumes:
+      - ./gatus/config.yaml:/config/config.yaml:ro
+      - ./gatus/endpoints.d:/config/endpoints.d:ro
+      - gatus_data:/data
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.gatus.rule=Host(`status.${DOMAIN}`)"
+      - "traefik.http.routers.gatus.entrypoints=websecure"
+      - "traefik.http.routers.gatus.middlewares=authentik-auth@file"
+      - "traefik.http.routers.gatus-http.rule=Host(`status.${DOMAIN}`)"
+      - "traefik.http.routers.gatus-http.entrypoints=web"
+      - "traefik.http.routers.gatus-http.middlewares=authentik-auth@file"
+      - "traefik.http.services.gatus.loadbalancer.server.port=8080"
+    networks:
+      - default
+      - internal-backend
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+
+  node-exporter:
+    logging: *default-logging
+    image: prom/node-exporter@sha256:1b4e4438faca4dd7e001dd445d161a4a2091b0fededa84093b3a8dfeae1f1be0 # v1.12.1
+    container_name: node-exporter
+    restart: unless-stopped
+    # Host-level metrics (disk/memory/CPU) for Grafana alerting - cAdvisor only exposes
+    # per-container metrics, it has no visibility into the host's own disk usage.
+    ports:
+      - "127.0.0.1:9100:9100"
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+      - ./prometheus/textfile:/textfile:ro
+    command:
+      - "--path.procfs=/host/proc"
+      - "--path.sysfs=/host/sys"
+      - "--path.rootfs=/rootfs"
+      - "--collector.textfile.directory=/textfile"
+      - "--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)"
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:9100/metrics"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          memory: 64M
+
+  # Authentik is this stack's SSO/IdP (see authentik/README.md for the full rationale: a real
+  # admin UI for users/groups/policies, reliable "groups" OIDC claim propagation, and a native
+  # forward-auth outpost - no third-party component like oauth2-proxy is needed). It replaced
+  # Authelia, which was fully removed once every app had been switched over.
+  authentik-server:
+    logging: *default-logging
+    image: ghcr.io/goauthentik/server@sha256:ed120caf710ccf82ef0026f0bc74e51615bc95ebff228a7a2d6fc60c441c3868 # 2026.5.6
+    container_name: authentik-server
+    command: server
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:9010:9000"
+    environment:
+      AUTHENTIK_SECRET_KEY: "${AUTHENTIK_SECRET_KEY}"
+      AUTHENTIK_POSTGRESQL__HOST: postgres
+      AUTHENTIK_POSTGRESQL__NAME: authentik
+      AUTHENTIK_POSTGRESQL__USER: postgres
+      AUTHENTIK_POSTGRESQL__PASSWORD: "${POSTGRES_PASSWORD}"
+      AUTHENTIK_LISTEN__TRUSTED_PROXIES: "10.0.0.0/8,172.16.0.0/12,192.168.0.0/16"
+      AUTHENTIK_CSRF_TRUSTED_ORIGINS: "https://authentik.${DOMAIN},https://chat.${DOMAIN},https://*.${DOMAIN}"
+      DOMAIN: "${DOMAIN}"
+      EMAIL_DOMAIN: "${EMAIL_DOMAIN}"
+    healthcheck:
+      test: ["CMD", "ak", "healthcheck"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    volumes:
+      - authentik_media:/media
+      - ./authentik/blueprints:/blueprints/custom
+    depends_on:
+      postgres:
+        condition: service_healthy
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.authentik.rule=Host(`authentik.${DOMAIN}`)"
+      - "traefik.http.routers.authentik.entrypoints=websecure"
+      - "traefik.http.routers.authentik-http.rule=Host(`authentik.${DOMAIN}`)"
+      - "traefik.http.routers.authentik-http.entrypoints=web"
+      - "traefik.http.services.authentik.loadbalancer.server.port=9000"
+    networks:
+      - default
+      - internal-backend
+    deploy:
+      resources:
+        limits:
+          memory: 768M
+
+  authentik-worker:
+    logging: *default-logging
+    image: ghcr.io/goauthentik/server@sha256:ed120caf710ccf82ef0026f0bc74e51615bc95ebff228a7a2d6fc60c441c3868 # 2026.5.6
+    container_name: authentik-worker
+    command: worker
+    restart: unless-stopped
+    environment:
+      AUTHENTIK_SECRET_KEY: "${AUTHENTIK_SECRET_KEY}"
+      AUTHENTIK_POSTGRESQL__HOST: postgres
+      AUTHENTIK_POSTGRESQL__NAME: authentik
+      AUTHENTIK_POSTGRESQL__USER: postgres
+      AUTHENTIK_POSTGRESQL__PASSWORD: "${POSTGRES_PASSWORD}"
+      DOMAIN: "${DOMAIN}"
+      EMAIL_DOMAIN: "${EMAIL_DOMAIN}"
+      LANGFUSE_OIDC_CLIENT_SECRET: "${LANGFUSE_OIDC_CLIENT_SECRET}"
+      LITELLM_OIDC_CLIENT_SECRET: "${LITELLM_OIDC_CLIENT_SECRET}"
+      CHOUSE_UI_OIDC_CLIENT_SECRET: "${CHOUSE_UI_OIDC_CLIENT_SECRET}"
+      VAULT_OIDC_CLIENT_SECRET: "${VAULT_OIDC_CLIENT_SECRET}"
+      # Serialize first-boot blueprint and outpost permission reconciliation to
+      # prevent PostgreSQL deadlocks in Authentik's guardian permission tables.
+      AUTHENTIK_WORKER__THREADS: "1"
+      # Bootstrap the initial admin (akadmin) account declaratively (idempotent: only applied
+      # on the very first startup) - matches this project's "no manual UI setup" governance
+      # rule, avoids the interactive first-run setup wizard entirely. Per Authentik's own docs,
+      # these 3 variables are only read from the WORKER container, not the server.
+      AUTHENTIK_BOOTSTRAP_EMAIL: "admin@${EMAIL_DOMAIN}"
+      AUTHENTIK_BOOTSTRAP_PASSWORD: "${UI_PASSWORD}"
+      AUTHENTIK_BOOTSTRAP_TOKEN: "${AUTHENTIK_BOOTSTRAP_TOKEN}"
+    volumes:
+      - authentik_media:/media
+      - ./authentik/blueprints:/blueprints/custom
+    healthcheck:
+      test: ["CMD", "ak", "healthcheck"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 90s
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - default
+      - internal-backend
+    deploy:
+      resources:
+        limits:
+          memory: 768M
+
+  # One-shot reconciliation gate. It is opt-in so ordinary `docker compose up`
+  # cannot silently rerun provisioning; start.sh force-recreates it explicitly.
+  authentik-provision:
+    image: ghcr.io/goauthentik/server@sha256:ed120caf710ccf82ef0026f0bc74e51615bc95ebff228a7a2d6fc60c441c3868 # 2026.5.6
+    container_name: authentik-provision
+    profiles:
+      - provisioning
+    restart: "no"
+    entrypoint: ["/bin/bash", "/workspace/authentik/provision.sh"]
+    working_dir: /workspace
+    environment:
+      AUTHENTIK_BASE_URL: "http://authentik-server:9000"
+      AUTHENTIK_BOOTSTRAP_TOKEN: "${AUTHENTIK_BOOTSTRAP_TOKEN}"
+      DOMAIN: "${DOMAIN}"
+      EMAIL_DOMAIN: "${EMAIL_DOMAIN}"
+      UI_PASSWORD: "${UI_PASSWORD}"
+    volumes:
+      - ./authentik/provision.sh:/workspace/authentik/provision.sh:ro
+      - ./authentik/scripts:/workspace/authentik/scripts:ro
+      - ./vault/secrets_ram/authentik.env:/run/secrets/authentik.env:ro
+    group_add:
+      - "${SECRETS_RENDER_GID}"
+    depends_on:
+      authentik-server:
+        condition: service_healthy
+      authentik-worker:
+        condition: service_healthy
+    networks:
+      - default
+      - internal-backend
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+
+  chouse-ui:
+    logging: *default-logging
+    image: ghcr.io/daun-gatal/chouse-ui@sha256:90d6c2256b3837d804c1a7ea18e326d63b5e9285d7172e4d7289d75221592aa1 # v3.12.0
+    container_name: chouse-ui
+    # Healthcheck: provided upstream in image Dockerfile (CMD-SHELL wget -q -T 5 --spider http://localhost:5521/api/health || exit 1)
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:5521:5521"
+    env_file:
+      - ./vault/secrets_ram/chouse-ui.env
+    volumes:
+      - ./traefik/certs/tls.crt:/etc/ssl/certs/local-ca.crt:ro
+    environment:
+      PORT: "5521"
+      CLICKHOUSE_DEFAULT_URL: "http://clickhouse:8123"
+      NODE_EXTRA_CA_CERTS: "/etc/ssl/certs/local-ca.crt"
+      # RBAC backend — PostgreSQL instead of the default SQLite
+      RBAC_DB_TYPE: "postgres"
+      RBAC_POSTGRES_URL: "postgres://postgres:${POSTGRES_PASSWORD}@postgres:5432/chouse_ui"
+      RBAC_POSTGRES_POOL_SIZE: "5"
+      AUTH_SSO_ENABLED: "true"
+      AUTH_SSO_BASE_URL: "https://clickhouse.${DOMAIN}"
+      AUTH_SSO_DEFAULT_ROLE: "viewer"
+      AUTH_SSO_AUTO_LINK_BY_EMAIL: "true"
+      AUTH_SSO_PROVIDERS_AUTHENTIK_TYPE: "oidc"
+      AUTH_SSO_PROVIDERS_AUTHENTIK_DISPLAY_NAME: "Sign in with Authentik"
+      AUTH_SSO_PROVIDERS_AUTHENTIK_ISSUER: "https://authentik.${DOMAIN}/application/o/chouse-ui/"
+      AUTH_SSO_PROVIDERS_AUTHENTIK_CLIENT_ID: "chouse-ui"
+      AUTH_SSO_PROVIDERS_AUTHENTIK_SCOPES: "openid profile email groups"
+      AUTH_SSO_PROVIDERS_AUTHENTIK_AUTHORIZATION_ENDPOINT: "https://authentik.${DOMAIN}/application/o/authorize/"
+      AUTH_SSO_PROVIDERS_AUTHENTIK_TOKEN_ENDPOINT: "https://authentik.${DOMAIN}/application/o/token/"
+      AUTH_SSO_PROVIDERS_AUTHENTIK_USERINFO_ENDPOINT: "https://authentik.${DOMAIN}/application/o/userinfo/"
+      AUTH_SSO_PROVIDERS_AUTHENTIK_ROLE_MAPPING_CLAIM: "groups"
+      AUTH_SSO_PROVIDERS_AUTHENTIK_ROLE_MAPPING: "admins:super_admin"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      clickhouse:
+        condition: service_healthy
+      vault-agent:
+        condition: service_healthy
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.clickhouse.rule=Host(`clickhouse.${DOMAIN}`)"
+      - "traefik.http.routers.clickhouse.entrypoints=websecure"
+      - "traefik.http.routers.clickhouse-http.rule=Host(`clickhouse.${DOMAIN}`)"
+      - "traefik.http.routers.clickhouse-http.entrypoints=web"
+      - "traefik.http.services.clickhouse.loadbalancer.server.port=5521"
+    networks:
+      - default
+      - internal-backend
+    deploy:
+      resources:
+        limits:
+          memory: 768M
+
+  traefik:
+    logging: *default-logging
+    image: traefik:v3.7.15@sha256:0f6150202bc1fed72a7bd2107460eaa510e5b8a905f3fdb5b84f2c8619c33368
+    container_name: traefik
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    healthcheck:
+      test: ["CMD", "traefik", "healthcheck", "--ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    environment:
+      - DOMAIN=${DOMAIN}
+      - CF_DNS_API_TOKEN=${CLOUDFLARE_API_TOKEN}
+      - CF_API_EMAIL=${ACME_EMAIL}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - traefik_acme:/etc/traefik
+      - ./traefik/traefik.yml:/etc/traefik/traefik.yml:ro
+      - ./traefik/dynamic.yml:/etc/traefik/dynamic/dynamic.yml:ro
+      - ./traefik/certs:/etc/traefik/certs:ro
+    command:
+      - "--ping=true"
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.traefik-dashboard.rule=Host(`traefik.${DOMAIN}`)"
+      - "traefik.http.routers.traefik-dashboard.entrypoints=websecure"
+      - "traefik.http.routers.traefik-dashboard.service=api@internal"
+      - "traefik.http.routers.traefik-dashboard.middlewares=authentik-auth@file"
+      - "traefik.http.routers.traefik-dashboard-http.rule=Host(`traefik.${DOMAIN}`)"
+      - "traefik.http.routers.traefik-dashboard-http.entrypoints=web"
+      - "traefik.http.routers.traefik-dashboard-http.service=api@internal"
+      - "traefik.http.routers.traefik-dashboard-http.middlewares=authentik-auth@file"
+    networks:
+      default:
+        aliases:
+          - traefik
+          - chat.${DOMAIN}
+          - litellm.${DOMAIN}
+          - langfuse.${DOMAIN}
+          - grafana.${DOMAIN}
+          - logs.${DOMAIN}
+          - searxng.${DOMAIN}
+          - s3.${DOMAIN}
+          - s3-console.${DOMAIN}
+          - clickhouse.${DOMAIN}
+          - qdrant.${DOMAIN}
+          - authentik.${DOMAIN}
+          - vault.${DOMAIN}
+          - traefik.${DOMAIN}
+          - alertmanager.${DOMAIN}
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+
+  cloudflared:
+    logging: *default-logging
+    image: cloudflare/cloudflared:2026.10.1@sha256:a15a3b50b8dabd57ac2090e9484c0247dba9dfa1f0df4d298d4317f9d69eb2d5
+    container_name: cloudflared
+    # No Docker healthcheck: distroless Go binary; tunnel connectivity is monitored externally
+    restart: unless-stopped
+    profiles:
+      - cloudflared
+      - cloudflare
+    command: tunnel --no-autoupdate run
+    environment:
+      - TUNNEL_TOKEN=${CLOUDFLARE_TUNNEL_TOKEN}
+    depends_on:
+      traefik:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+
+  coredns:
+    logging: *default-logging
+    image: coredns/coredns:1.14.7@sha256:7efd3c635b03efd68c4e8398fc45f0d993d0e9ab016f72c1cefb0fd6d01aa286
+    container_name: coredns
+    # No Docker healthcheck: distroless Go binary; DNS resolution monitored externally via smoke test
+    restart: unless-stopped
+    profiles:
+      - coredns
+    ports:
+      - "${COREDNS_BIND_IP}:53:53/udp"
+      - "${COREDNS_BIND_IP}:53:53/tcp"
+    volumes:
+      - ./coredns/Corefile:/etc/coredns/Corefile:ro
+    command: -conf /etc/coredns/Corefile
+    deploy:
+      resources:
+        limits:
+          memory: 64M
+
+  betterleaks:
+    logging: *default-logging
+    build:
+      context: ./betterleaks
+      dockerfile: Dockerfile
+    image: betterleaks-presidio:local
+    container_name: betterleaks
+    restart: unless-stopped
+    env_file:
+      - ./vault/secrets_ram/betterleaks.env
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_DB=2
+    depends_on:
+      redis:
+        condition: service_healthy
+      vault-agent:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:8090:8080"
+    volumes:
+      - ./betterleaks/config/betterleaks.toml:/app/config/betterleaks.toml:ro
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - default
+      - internal-backend
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+
+  docs-user:
+    logging: *default-logging
+    image: llm-stack-docs-user:local
+    container_name: docs-user
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8085:8080"
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://127.0.0.1:8080/ || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.docs.rule=Host(`docs.${DOMAIN}`)"
+      - "traefik.http.routers.docs.entrypoints=websecure"
+      - "traefik.http.routers.docs.middlewares=authentik-auth@file"
+      - "traefik.http.routers.docs-http.rule=Host(`docs.${DOMAIN}`)"
+      - "traefik.http.routers.docs-http.entrypoints=web"
+      - "traefik.http.routers.docs-http.middlewares=authentik-auth@file"
+      - "traefik.http.services.docs.loadbalancer.server.port=8080"
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+
+  docs-architecture:
+    logging: *default-logging
+    image: llm-stack-docs-architecture:local
+    container_name: docs-architecture
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8086:8080"
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://127.0.0.1:8080/ || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.arch.rule=Host(`arch.${DOMAIN}`)"
+      - "traefik.http.routers.arch.entrypoints=websecure"
+      - "traefik.http.routers.arch.middlewares=authentik-auth@file"
+      - "traefik.http.routers.arch-http.rule=Host(`arch.${DOMAIN}`)"
+      - "traefik.http.routers.arch-http.entrypoints=web"
+      - "traefik.http.routers.arch-http.middlewares=authentik-auth@file"
+      - "traefik.http.services.arch.loadbalancer.server.port=8080"
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+
+volumes:
+  ollama_data:
+    driver: local
+  open-webui:
+    driver: local
+  postgres_data:
+    driver: local
+  prometheus_data:
+    driver: local
+  alertmanager_data:
+    driver: local
+  langfuse_clickhouse_data:
+    driver: local
+  langfuse_clickhouse_logs:
+    driver: local
+  grafana_data:
+    driver: local
+  qdrant_data:
+    driver: local
+  seaweedfs_data:
+    driver: local
+  loki_data:
+    driver: local
+  traefik_acme:
+    driver: local
+
+  authentik_media:
+    driver: local
+  gatus_data:
+    driver: local
+  vault_data:
+    driver: local
+
+networks:
+  default:
+    name: llm-stack_default
+  internal-backend:
+    name: llm-stack_backend
+    internal: true

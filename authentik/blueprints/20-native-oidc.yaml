@@ -1,0 +1,232 @@
+version: 1
+metadata:
+  name: llm-stack - Native OIDC Applications
+  labels:
+    blueprints.goauthentik.io/description: |
+      Declares native OIDC providers, applications, scope mappings, and RBAC policy bindings
+      for Langfuse, LiteLLM, CHouse UI, and HashiCorp Vault.
+entries:
+  # ----------------------------------------------------------------------------
+  # Custom Scope Mapping: LiteLLM Role
+  # ----------------------------------------------------------------------------
+  - model: authentik_providers_oauth2.scopemapping
+    state: present
+    identifiers:
+      name: llm-stack-litellm-role-scope
+    id: scope-litellm-role
+    attrs:
+      scope_name: litellm_role
+      description: "LiteLLM proxy role, derived from Authentik group membership"
+      expression: |
+        return {
+            "litellm_role": "proxy_admin" if request.user.groups.filter(name="admins").exists() else "internal_user_view_only",
+        }
+
+  # ----------------------------------------------------------------------------
+  # 1. Langfuse OIDC
+  # ----------------------------------------------------------------------------
+  - model: authentik_providers_oauth2.oauth2provider
+    state: present
+    identifiers:
+      name: langfuse-oidc
+    id: provider-langfuse-oidc
+    attrs:
+      authorization_flow: !Find [authentik_flows.flow, [slug, default-provider-authorization-implicit-consent]]
+      invalidation_flow: !Find [authentik_flows.flow, [slug, default-provider-invalidation-flow]]
+      client_type: confidential
+      client_id: langfuse
+      client_secret: !Env LANGFUSE_OIDC_CLIENT_SECRET
+      include_claims_in_id_token: true
+      signing_key: null
+      grant_types:
+        - authorization_code
+        - refresh_token
+      redirect_uris:
+        - matching_mode: strict
+          url: !Format ["https://langfuse.%s/api/auth/callback/custom", !Env DOMAIN]
+      property_mappings:
+        - !Find [authentik_providers_oauth2.scopemapping, [scope_name, openid]]
+        - !Find [authentik_providers_oauth2.scopemapping, [scope_name, profile]]
+        - !Find [authentik_providers_oauth2.scopemapping, [scope_name, email]]
+        - !Find [authentik_providers_oauth2.scopemapping, [name, llm-stack-groups-scope]]
+
+  - model: authentik_core.application
+    state: present
+    identifiers:
+      slug: langfuse
+    id: app-langfuse-oidc
+    attrs:
+      name: Langfuse
+      provider: !KeyOf provider-langfuse-oidc
+      meta_launch_url: !Format ["https://langfuse.%s", !Env DOMAIN]
+      meta_icon: "https://cdn.jsdelivr.net/gh/selfhst/icons/png/langfuse.png"
+      meta_description: "LLM observability and tracing (LLMOps)."
+      meta_publisher: "llm-stack"
+      group: "LLMOps & Gateway"
+
+  - model: authentik_policies.policybinding
+    state: present
+    identifiers:
+      target: !KeyOf app-langfuse-oidc
+      group: !Find [authentik_core.group, [name, admins]]
+      order: 0
+    attrs:
+      enabled: true
+
+  # ----------------------------------------------------------------------------
+  # 2. LiteLLM OIDC
+  # ----------------------------------------------------------------------------
+  - model: authentik_providers_oauth2.oauth2provider
+    state: present
+    identifiers:
+      name: litellm-oidc
+    id: provider-litellm-oidc
+    attrs:
+      authorization_flow: !Find [authentik_flows.flow, [slug, default-provider-authorization-implicit-consent]]
+      invalidation_flow: !Find [authentik_flows.flow, [slug, default-provider-invalidation-flow]]
+      client_type: confidential
+      client_id: litellm
+      client_secret: !Env LITELLM_OIDC_CLIENT_SECRET
+      include_claims_in_id_token: true
+      signing_key: !Find [authentik_crypto.certificatekeypair, [name, "authentik Self-signed Certificate"]]
+      grant_types:
+        - authorization_code
+        - refresh_token
+      redirect_uris:
+        - matching_mode: strict
+          url: !Format ["https://litellm.%s/sso/callback", !Env DOMAIN]
+      property_mappings:
+        - !Find [authentik_providers_oauth2.scopemapping, [scope_name, openid]]
+        - !Find [authentik_providers_oauth2.scopemapping, [scope_name, profile]]
+        - !Find [authentik_providers_oauth2.scopemapping, [scope_name, email]]
+        - !Find [authentik_providers_oauth2.scopemapping, [name, llm-stack-groups-scope]]
+        - !KeyOf scope-litellm-role
+
+  - model: authentik_core.application
+    state: present
+    identifiers:
+      slug: litellm
+    id: app-litellm-oidc
+    attrs:
+      name: LiteLLM
+      provider: !KeyOf provider-litellm-oidc
+      meta_launch_url: !Format ["https://litellm.%s/ui/", !Env DOMAIN]
+      meta_icon: "https://cdn.jsdelivr.net/gh/selfhst/icons/png/litellm.png"
+      meta_description: "LiteLLM proxy admin UI (model routing, spend tracking)."
+      meta_publisher: "llm-stack"
+      group: "LLMOps & Gateway"
+
+  - model: authentik_policies.policybinding
+    state: present
+    identifiers:
+      target: !KeyOf app-litellm-oidc
+      group: !Find [authentik_core.group, [name, admins]]
+      order: 0
+    attrs:
+      enabled: true
+
+  # ----------------------------------------------------------------------------
+  # 3. CHouse UI OIDC
+  # ----------------------------------------------------------------------------
+  - model: authentik_providers_oauth2.oauth2provider
+    state: present
+    identifiers:
+      name: chouse-ui-oidc
+    id: provider-chouse-ui-oidc
+    attrs:
+      authorization_flow: !Find [authentik_flows.flow, [slug, default-provider-authorization-implicit-consent]]
+      invalidation_flow: !Find [authentik_flows.flow, [slug, default-provider-invalidation-flow]]
+      client_type: confidential
+      client_id: chouse-ui
+      client_secret: !Env CHOUSE_UI_OIDC_CLIENT_SECRET
+      include_claims_in_id_token: true
+      signing_key: null
+      grant_types:
+        - authorization_code
+        - refresh_token
+      redirect_uris:
+        - matching_mode: strict
+          url: !Format ["https://clickhouse.%s/auth/sso/callback", !Env DOMAIN]
+      property_mappings:
+        - !Find [authentik_providers_oauth2.scopemapping, [scope_name, openid]]
+        - !Find [authentik_providers_oauth2.scopemapping, [scope_name, profile]]
+        - !Find [authentik_providers_oauth2.scopemapping, [name, llm-stack-email-verified-scope]]
+        - !Find [authentik_providers_oauth2.scopemapping, [name, llm-stack-groups-scope]]
+
+  - model: authentik_core.application
+    state: present
+    identifiers:
+      slug: chouse-ui
+    id: app-chouse-ui-oidc
+    attrs:
+      name: CHouse UI
+      provider: !KeyOf provider-chouse-ui-oidc
+      meta_launch_url: !Format ["https://clickhouse.%s", !Env DOMAIN]
+      meta_icon: "https://cdn.jsdelivr.net/gh/selfhst/icons/png/clickhouse.png"
+      meta_description: "ClickHouse admin UI (Langfuse's analytics backend)."
+      meta_publisher: "llm-stack"
+      group: "Data, Storage & Infrastructure"
+
+  - model: authentik_policies.policybinding
+    state: present
+    identifiers:
+      target: !KeyOf app-chouse-ui-oidc
+      group: !Find [authentik_core.group, [name, admins]]
+      order: 0
+    attrs:
+      enabled: true
+
+  # ----------------------------------------------------------------------------
+  # 4. HashiCorp Vault OIDC
+  # ----------------------------------------------------------------------------
+  - model: authentik_providers_oauth2.oauth2provider
+    state: present
+    identifiers:
+      name: vault-oidc
+    id: provider-vault-oidc
+    attrs:
+      authorization_flow: !Find [authentik_flows.flow, [slug, default-provider-authorization-implicit-consent]]
+      invalidation_flow: !Find [authentik_flows.flow, [slug, default-provider-invalidation-flow]]
+      client_type: confidential
+      client_id: vault
+      client_secret: !Env VAULT_OIDC_CLIENT_SECRET
+      include_claims_in_id_token: true
+      signing_key: !Find [authentik_crypto.certificatekeypair, [name, "authentik Self-signed Certificate"]]
+      grant_types:
+        - authorization_code
+        - refresh_token
+      redirect_uris:
+        - matching_mode: strict
+          url: !Format ["https://vault.%s/ui/vault/auth/oidc/oidc/callback", !Env DOMAIN]
+        - matching_mode: strict
+          url: "http://localhost:8200/ui/vault/auth/oidc/oidc/callback"
+        - matching_mode: strict
+          url: "http://localhost:8201/ui/vault/auth/oidc/oidc/callback"
+      property_mappings:
+        - !Find [authentik_providers_oauth2.scopemapping, [scope_name, openid]]
+        - !Find [authentik_providers_oauth2.scopemapping, [scope_name, profile]]
+        - !Find [authentik_providers_oauth2.scopemapping, [name, llm-stack-email-verified-scope]]
+        - !Find [authentik_providers_oauth2.scopemapping, [name, llm-stack-groups-scope]]
+
+  - model: authentik_core.application
+    state: present
+    identifiers:
+      slug: vault
+    id: app-vault-oidc
+    attrs:
+      name: HashiCorp Vault
+      provider: !KeyOf provider-vault-oidc
+      meta_launch_url: !Format ["https://vault.%s", !Env DOMAIN]
+      meta_icon: "https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons/png/vault.png"
+      meta_description: "Enterprise Secrets Management & Encryption Vault"
+      meta_publisher: "llm-stack"
+      group: "Data, Storage & Infrastructure"
+
+  - model: authentik_policies.policybinding
+    state: present
+    identifiers:
+      target: !KeyOf app-vault-oidc
+      group: !Find [authentik_core.group, [name, admins]]
+      order: 0
+    attrs:
+      enabled: true

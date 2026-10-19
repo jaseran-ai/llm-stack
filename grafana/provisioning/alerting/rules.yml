@@ -1,0 +1,193 @@
+apiVersion: 1
+
+groups:
+  - orgId: 1
+    name: llm-stack-alerts
+    folder: LLM Stack
+    interval: 1m
+    rules:
+      - uid: llm-stack-service-down
+        title: Service Down
+        condition: C
+        data:
+          - refId: A
+            datasourceUid: Prometheus
+            relativeTimeRange:
+              from: 300
+              to: 0
+            model:
+              expr: up{job=~"litellm|qdrant|cadvisor|node-exporter"}
+              instant: true
+              refId: A
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              type: classic_conditions
+              expr: ""
+              refId: C
+              conditions:
+                - evaluator:
+                    type: lt
+                    params: [1]
+                  operator:
+                    type: and
+                  query:
+                    params: [A]
+                  reducer:
+                    type: last
+                    params: []
+              datasource:
+                type: __expr__
+                uid: __expr__
+        noDataState: OK
+        execErrState: Alerting
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "{{ $labels.job }} is not responding to Prometheus scrapes."
+          description: >
+            The {{ $labels.job }} target has been unreachable for at least 2 minutes.
+            Check 'docker compose ps' and 'docker compose logs {{ $labels.job }}'.
+
+      - uid: llm-stack-container-memory-high
+        title: Container Memory Near Limit
+        condition: C
+        data:
+          - refId: A
+            datasourceUid: Prometheus
+            relativeTimeRange:
+              from: 300
+              to: 0
+            model:
+              expr: >-
+                container_memory_usage_bytes{container_label_com_docker_compose_project="llm-stack", name!=""}
+                /
+                container_spec_memory_limit_bytes{container_label_com_docker_compose_project="llm-stack", name!=""}
+                > 0.9
+              instant: true
+              refId: A
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              type: classic_conditions
+              expr: ""
+              refId: C
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [0]
+                  operator:
+                    type: and
+                  query:
+                    params: [A]
+                  reducer:
+                    type: last
+                    params: []
+              datasource:
+                type: __expr__
+                uid: __expr__
+        noDataState: OK
+        execErrState: Alerting
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Container {{ $labels.container_label_com_docker_compose_service }} is using over 90% of its memory limit."
+          description: >
+            Sustained high memory usage for 5+ minutes usually precedes an OOM kill
+            (already observed for real on litellm, presidio-analyzer, chouse-ui, and homarr
+            during this project's own hardening work). Consider raising the memory limit in
+            docker-compose.yml if this recurs.
+
+      - uid: llm-stack-host-disk-high
+        title: Host Disk Usage High
+        condition: C
+        data:
+          - refId: A
+            datasourceUid: Prometheus
+            relativeTimeRange:
+              from: 300
+              to: 0
+            model:
+              expr: >-
+                (1 - node_filesystem_avail_bytes{mountpoint="/", fstype!="tmpfs"}
+                / node_filesystem_size_bytes{mountpoint="/", fstype!="tmpfs"}) * 100
+              instant: true
+              refId: A
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              type: classic_conditions
+              expr: ""
+              refId: C
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [85]
+                  operator:
+                    type: and
+                  query:
+                    params: [A]
+                  reducer:
+                    type: last
+                    params: []
+              datasource:
+                type: __expr__
+                uid: __expr__
+        noDataState: OK
+        execErrState: Alerting
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Host disk usage on / is above 85%."
+          description: >
+            Without log rotation and volume backups pruning, disk usage can grow unbounded.
+            Check 'docker system df -v' and consider running 'make backup' followed by
+            pruning old entries in the local backups/ directory.
+
+      - uid: llm-stack-host-memory-high
+        title: Host Memory Usage High
+        condition: C
+        data:
+          - refId: A
+            datasourceUid: Prometheus
+            relativeTimeRange:
+              from: 300
+              to: 0
+            model:
+              expr: >-
+                (1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes) * 100
+              instant: true
+              refId: A
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              type: classic_conditions
+              expr: ""
+              refId: C
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [90]
+                  operator:
+                    type: and
+                  query:
+                    params: [A]
+                  reducer:
+                    type: last
+                    params: []
+              datasource:
+                type: __expr__
+                uid: __expr__
+        noDataState: OK
+        execErrState: Alerting
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Host memory usage is above 90%."
+          description: >
+            The whole machine is close to running out of RAM, not just a single container.
+            Check 'docker stats' to find the heaviest consumer.

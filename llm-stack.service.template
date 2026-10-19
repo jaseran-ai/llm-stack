@@ -1,0 +1,16 @@
+[Unit]
+Description=LLM Stack Docker Compose
+Requires=docker.service
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+WorkingDirectory=${REPO_DIR}
+ExecStart=${REPO_DIR}/start.sh
+ExecStop=${REPO_DIR}/stop.sh
+TimeoutStartSec=0
+
+[Install]
+WantedBy=multi-user.target

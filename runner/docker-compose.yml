@@ -1,0 +1,36 @@
+services:
+  runner-files-init:
+    image: myoung34/github-runner:2.334.0@sha256:da8f1a351d2b93ee74602154545d2954c31225dfb730265f87079ed9884fc7ea
+    entrypoint:
+      - /bin/bash
+      - -euc
+      - |
+        cp -a /actions-runner/. /runner-host/
+        test -x /runner-host/externals/node24/bin/node
+    restart: "no"
+    volumes:
+      - /actions-runner:/runner-host
+
+  gh-actions-runner:
+    image: myoung34/github-runner:2.334.0@sha256:da8f1a351d2b93ee74602154545d2954c31225dfb730265f87079ed9884fc7ea
+    container_name: gh-actions-runner
+    restart: unless-stopped
+    depends_on:
+      runner-files-init:
+        condition: service_completed_successfully
+    environment:
+      REPO_URL: "https://github.com/jaseran-ai/llm-stack"
+      RUNNER_TOKEN: "${RUNNER_TOKEN}"
+      RUNNER_NAME: "${RUNNER_NAME}"
+      RUNNER_WORKDIR: "/tmp/runner/work"
+      CONFIGURED_ACTIONS_RUNNER_FILES_DIR: "/runner-data"
+      DISABLE_AUTOMATIC_DEREGISTRATION: "true"
+      LABELS: "self-hosted,linux"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /tmp/runner/work:/tmp/runner/work
+      - /actions-runner:/actions-runner
+      - runner_data:/runner-data
+
+volumes:
+  runner_data:

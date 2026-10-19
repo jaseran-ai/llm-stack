@@ -1,0 +1,195 @@
+{
+  "__inputs": [],
+  "__requires": [
+    { "type": "datasource", "id": "prometheus", "name": "Prometheus", "version": "1.0.0" },
+    { "type": "datasource", "id": "loki", "name": "Loki", "version": "1.0.0" }
+  ],
+  "id": null,
+  "uid": "llm-stack-alerts-sla",
+  "title": "Alerts, Incidents & Service SLA",
+  "description": "Unified Alertmanager incident tracking, scrape target availability %, notification rates, and system error log streams.",
+  "tags": ["llm-stack", "alerts", "alertmanager", "sla", "uptime"],
+  "timezone": "browser",
+  "refresh": "15s",
+  "schemaVersion": 39,
+  "version": 1,
+  "time": { "from": "now-3h", "to": "now" },
+  "panels": [
+    {
+      "id": 1,
+      "type": "row",
+      "title": "Incident & SLA Health Overview",
+      "gridPos": { "x": 0, "y": 0, "w": 24, "h": 1 },
+      "collapsed": false
+    },
+    {
+      "id": 2,
+      "title": "Overall Stack Availability",
+      "type": "gauge",
+      "gridPos": { "x": 0, "y": 1, "w": 6, "h": 5 },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "showThresholdLabels": false,
+        "showThresholdMarkers": true
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "max": 100,
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "yellow", "value": 90 },
+              { "color": "green", "value": 98 }
+            ]
+          }
+        }
+      },
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "targets": [
+        { "expr": "100 * (sum(up) / count(up))", "legendFormat": "Global Uptime %", "refId": "A" }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Active Firing Alerts",
+      "type": "stat",
+      "gridPos": { "x": 6, "y": 1, "w": 6, "h": 5 },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "colorMode": "background",
+        "graphMode": "none"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "red", "value": 1 }
+            ]
+          }
+        }
+      },
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "targets": [
+        { "expr": "sum(alertmanager_alerts{state=\"active\"}) or vector(0)", "legendFormat": "Firing", "refId": "A" }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "Silenced / Suppressed Alerts",
+      "type": "stat",
+      "gridPos": { "x": 12, "y": 1, "w": 6, "h": 5 },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "colorMode": "background",
+        "graphMode": "none"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 1 }
+            ]
+          }
+        }
+      },
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "targets": [
+        { "expr": "sum(alertmanager_alerts{state=\"suppressed\"}) or vector(0)", "legendFormat": "Silenced", "refId": "A" }
+      ]
+    },
+    {
+      "id": 5,
+      "title": "Monitored Targets (Healthy / Total)",
+      "type": "stat",
+      "gridPos": { "x": 18, "y": 1, "w": 6, "h": 5 },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "colorMode": "value",
+        "graphMode": "none"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [{ "color": "green", "value": null }]
+          }
+        }
+      },
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "targets": [
+        { "expr": "sum(up)", "legendFormat": "Online Targets", "refId": "A" }
+      ]
+    },
+    {
+      "id": 10,
+      "type": "row",
+      "title": "Service Target Availability Breakdown",
+      "gridPos": { "x": 0, "y": 6, "w": 24, "h": 1 },
+      "collapsed": false
+    },
+    {
+      "id": 11,
+      "title": "Service Target Availability Matrix",
+      "type": "state-timeline",
+      "gridPos": { "x": 0, "y": 7, "w": 24, "h": 8 },
+      "options": {
+        "showValue": "never",
+        "mergeValues": true
+      },
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "0": { "text": "DOWN", "color": "red" },
+                "1": { "text": "UP", "color": "green" }
+              }
+            }
+          ]
+        }
+      },
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "targets": [
+        { "expr": "up", "legendFormat": "{{job}} ({{instance}})", "refId": "A" }
+      ]
+    },
+    {
+      "id": 20,
+      "type": "row",
+      "title": "Critical Error Streams Across Stack",
+      "gridPos": { "x": 0, "y": 15, "w": 24, "h": 1 },
+      "collapsed": false
+    },
+    {
+      "id": 21,
+      "title": "Stack Error Logs",
+      "type": "logs",
+      "gridPos": { "x": 0, "y": 16, "w": 24, "h": 8 },
+      "options": {
+        "dedupStrategy": "none",
+        "showLabels": true,
+        "showTime": true,
+        "wrapLogMessage": false,
+        "sortOrder": "Descending"
+      },
+      "datasource": { "type": "loki", "uid": "loki" },
+      "targets": [
+        { "expr": "{container=~\".+\"} |= \"error\" | logfmt", "refId": "A" }
+      ]
+    }
+  ]
+}

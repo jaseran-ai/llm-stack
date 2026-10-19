@@ -1,0 +1,12 @@
+extends: default
+
+ignore: |
+  **/node_modules/
+  uat/runtime/
+
+rules:
+  document-start: disable
+  line-length: disable
+  comments: disable
+  comments-indentation: disable
+  truthy: disable

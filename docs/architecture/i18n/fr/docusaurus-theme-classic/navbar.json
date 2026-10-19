@@ -1,0 +1,10 @@
+{
+  "title": {
+    "message": "LLM Stack Architecture (arc42 + C4)",
+    "description": "The title in the navbar"
+  },
+  "item.label.Specification": {
+    "message": "Spécification",
+    "description": "Navbar item with label Specification"
+  }
+}

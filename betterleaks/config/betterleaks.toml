@@ -1,0 +1,31 @@
+# ==============================================================================
+# Betterleaks Declarative Rules Configuration
+# ==============================================================================
+
+title = "llm-stack Betterleaks Security Configuration"
+
+[extend]
+useDefault = true
+
+# ------------------------------------------------------------------------------
+# Custom Organization Rules
+# ------------------------------------------------------------------------------
+
+[[rules]]
+id = "vault-token"
+description = "Detected a HashiCorp Vault token"
+regex = '''\b(hvb\.[a-zA-Z0-9_-]{24,}|hvs\.[a-zA-Z0-9_-]{24,})\b'''
+keywords = ["hvb.", "hvs."]
+confidence = "high"
+
+# ------------------------------------------------------------------------------
+# Allowlists
+# ------------------------------------------------------------------------------
+
+[allowlist]
+description = "Global test and documentation example patterns allowlist"
+regexes = [
+  '''AKIAIOSFODNN7EXAMPLE''',
+  '''wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY''',
+  '''sk-dummy-.*'''
+]

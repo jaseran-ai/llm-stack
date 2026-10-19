@@ -1,0 +1,9 @@
+# Generated into the disposable worktree by scripts/uat/setup.sh.
+# The source path is backed by a dedicated outer Docker volume on the DinD
+# controller, so model blobs survive while inner application volumes do not.
+services:
+  ollama:
+    volumes:
+      - type: bind
+        source: /var/lib/llm-stack-uat/ollama-models
+        target: /root/.ollama/models

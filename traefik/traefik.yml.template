@@ -1,0 +1,63 @@
+# ==============================================================================
+# Traefik v3 - Static & Dynamic Configuration Template
+# Hydrated by traefik/scripts/hydrate_traefik.py (called from setup.sh / init.sh)
+# ==============================================================================
+
+global:
+  checkNewVersion: false
+  sendAnonymousUsage: false
+
+log:
+  level: DEBUG
+
+api:
+  insecure: false
+  dashboard: true
+
+ping:
+  entryPoint: ping
+
+entryPoints:
+  ping:
+    address: ":8081"
+
+  metrics:
+    address: ":8082"
+
+  web:
+    address: ":80"
+    forwardedHeaders:
+      insecure: true
+    http:
+      middlewares:
+        - "security-headers@file"
+
+  websecure:
+    address: ":443"
+    forwardedHeaders:
+      insecure: true
+    http:
+      tls: {}
+      middlewares:
+        - "security-headers@file"
+
+metrics:
+  prometheus:
+    entryPoint: metrics
+    addEntryPointsLabels: true
+    addRoutersLabels: true
+    addServicesLabels: true
+
+providers:
+  docker:
+    endpoint: "unix:///var/run/docker.sock"
+    network: "llm-stack_default"
+    httpClientTimeout: 0
+    exposedByDefault: false
+    watch: true
+
+  file:
+    filename: "/etc/traefik/dynamic/dynamic.yml"
+    watch: true
+
+___TRAEFIK_CERT_RESOLVERS___

@@ -1,0 +1,10 @@
+# Cursor & OpenCode Guidelines
+# Refer to AGENTS.md for full governance, CAB protocols, and architectural rules.
+
+- Always follow the CAB checklist (Scope, Impact, Zero-Downtime Sequencing, Live Log Verification, Rollback) before modifying configuration files or running containers.
+- Never restart or disrupt `litellm` without explicit user permission.
+- Always inject file dependencies into live containers (`docker cp`) before editing host files that trigger hot-reloads.
+- No fallback secrets `${VAR:-default}` in docker-compose.yml; use bare `${VAR}`.
+- Always read official version-matched documentation and investigate edge-cases (WebSockets, CORS, headers, auth quirks) BEFORE implementing any service or configuration.
+- Verify every change empirically with live logs, status codes, and `python3 scripts/smoke_test.py`.
+- Follow Conventional Commits and keep all public files/docs in English.

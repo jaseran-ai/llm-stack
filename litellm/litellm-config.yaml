@@ -1,0 +1,50 @@
+# litellm config yml
+# https://docs.litellm.ai/docs/proxy/quick_start
+
+# Native include for custom & private model definitions (gitignored / assume-unchanged)
+include:
+  - custom_models.yaml
+
+model_list:
+  # Below are aliases of the single Ollama model weight
+  # (lfm2.5-thinking:1.2b, pulled once by ollama/provision.sh) - no external GPU machine, no
+  # separate physical hardware. See ollama/README.md.
+  - model_name: lfm2.5-thinking-1.2b
+    litellm_params:
+      # "ollama_chat/" is LiteLLM's recommended provider prefix for Ollama's native /api/chat endpoint
+      model: ollama_chat/lfm2.5-thinking:1.2b
+      api_base: http://ollama:11434
+    model_info:
+      # Ollama's native API returns the reasoning trace in a separate "thinking" field
+      # LiteLLM maps this to the OpenAI-style "reasoning_content" field on the response
+      supports_reasoning: true
+
+  - model_name: lfm2.5-thinking-1.2b-no-think
+    litellm_params:
+      model: ollama_chat/lfm2.5-thinking:1.2b
+      api_base: http://ollama:11434
+      # Ollama's native "think" request field (forwarded as-is by LiteLLM)
+      think: false
+
+litellm_settings: # module level litellm settings - https://github.com/BerriAI/litellm/blob/main/litellm/__init__.py
+  drop_params: True
+  # Migrated to LiteLLM's OTel v2 "langfuse_otel" preset, which ships spans
+  # to Langfuse's /api/public/otel endpoint (officially recommended for Langfuse v3+).
+  # Requires LITELLM_OTEL_V2=true in litellm.env.
+  callbacks: ["langfuse_otel", "prometheus"]
+  require_auth_for_metrics_endpoint: false
+
+general_settings:
+  master_key: os.environ/LITELLM_MASTER_KEY
+  store_model_in_db: true
+  store_prompts_in_spend_logs: true
+
+guardrails:
+  - guardrail_name: "presidio-pii-masking"
+    litellm_params:
+      guardrail: "presidio"
+      mode: "pre_call"
+      default_on: true
+      presidio_analyzer_api_base: "http://betterleaks:8080/"
+      presidio_anonymizer_api_base: "http://betterleaks:8080/"
+      presidio_language: "en"

@@ -1,0 +1,23 @@
+version: 2
+updates:
+  # Docker image versions declared in docker-compose.yml (image: name:tag or name@digest).
+  # Opens a PR whenever a newer version is available, serving governance rule 7 (component
+  # longevity audit) automatically instead of relying on someone remembering to check.
+  - package-ecosystem: "docker-compose"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 10
+    labels:
+      - "dependencies"
+      - "docker"
+
+
+  # GitHub Actions versions used in .github/workflows/ci.yml (e.g. actions/checkout).
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    labels:
+      - "dependencies"
+      - "github-actions"

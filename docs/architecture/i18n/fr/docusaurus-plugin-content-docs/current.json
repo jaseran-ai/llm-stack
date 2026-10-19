@@ -1,0 +1,14 @@
+{
+  "version.label": {
+    "message": "Next",
+    "description": "The label for version current"
+  },
+  "sidebar.archSidebar.category.Architecture Specification (arc42)": {
+    "message": "Architecture Specification (arc42)",
+    "description": "The label for category 'Architecture Specification (arc42)' in sidebar 'archSidebar'"
+  },
+  "sidebar.archSidebar.category.Decision Records (ADR)": {
+    "message": "Decision Records (ADR)",
+    "description": "The label for category 'Decision Records (ADR)' in sidebar 'archSidebar'"
+  }
+}

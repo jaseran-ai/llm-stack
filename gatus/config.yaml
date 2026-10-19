@@ -1,0 +1,191 @@
+# ==============================================================================
+# Gatus - GitOps Native Health Dashboard Configuration
+# 100% Declarative YAML configuration for monitoring all LLM Stack services & infrastructure.
+# ==============================================================================
+
+metrics: true
+
+storage:
+  type: sqlite
+  path: /data/gatus.db
+
+web:
+  port: 8080
+
+endpoints:
+  # --- AI Core & Gateway ---
+  - name: Open-WebUI Chat Interface
+    group: AI Core
+    url: "http://open-webui:8080/health"
+    interval: 30s
+    conditions:
+      - "[STATUS] == 200"
+
+  - name: LiteLLM Gateway
+    group: AI Core
+    url: "http://litellm:4000/health/liveliness"
+    interval: 30s
+    conditions:
+      - "[STATUS] == 200"
+
+  - name: Ollama Local LLM Engine
+    group: AI Core
+    url: "http://ollama:11434/"
+    interval: 30s
+    conditions:
+      - "[STATUS] == 200"
+
+  - name: Qdrant Vector DB
+    group: AI Core
+    url: "http://qdrant:6333/healthz"
+    interval: 30s
+    conditions:
+      - "[STATUS] == 200"
+
+  # --- Security & Identity ---
+  - name: Authentik SSO Portal
+    group: Security & Identity
+    url: "http://authentik-server:9000/-/health/ready/"
+    interval: 30s
+    conditions:
+      - "[STATUS] == 200"
+
+  - name: Authentik Home Portal
+    group: Security & Identity
+    url: "http://authentik-server:9000/if/user/"
+    interval: 30s
+    conditions:
+      - "[STATUS] == 200"
+
+  - name: Vault Secrets Engine
+    group: Security & Identity
+    url: "https://vault:8200/v1/sys/health"
+    interval: 30s
+    client:
+      insecure: true
+    conditions:
+      - "[STATUS] == 200"
+
+  - name: Traefik Ingress Controller
+    group: Security & Identity
+    url: "http://traefik:8081/ping"
+    interval: 30s
+    conditions:
+      - "[STATUS] == 200"
+      - "[BODY] == OK"
+
+  - name: Betterleaks Secrets Redactor
+    group: Security & Identity
+    url: "http://betterleaks:8080/healthz"
+    interval: 30s
+    conditions:
+      - "[STATUS] == 200"
+      - "[BODY].status == healthy"
+
+  # --- AI Observability & Search ---
+  - name: Langfuse LLMOps
+    group: Observability
+    url: "http://langfuse-web:3000/api/public/health"
+    interval: 30s
+    conditions:
+      - "[STATUS] == 200"
+
+  - name: Grafana Dashboards
+    group: Observability
+    url: "http://grafana:3000/api/health"
+    interval: 30s
+    conditions:
+      - "[STATUS] == 200"
+
+  - name: Prometheus Observability Engine
+    group: Observability
+    url: "http://prometheus:9090/-/healthy"
+    interval: 30s
+    conditions:
+      - "[STATUS] == 200"
+
+  - name: Alertmanager
+    group: Observability
+    url: "http://alertmanager:9093/-/healthy"
+    interval: 30s
+    conditions:
+      - "[STATUS] == 200"
+
+  - name: Loki Log Ingestion Engine
+    group: Observability
+    url: "http://loki:3100/ready"
+    interval: 30s
+    conditions:
+      - "[STATUS] == 200"
+
+  - name: Dozzle Container Logs
+    group: Observability
+    url: "http://dozzle:8080/healthcheck"
+    interval: 30s
+    conditions:
+      - "[STATUS] == 200"
+
+  - name: SearXNG Metasearch
+    group: Search
+    url: "http://searxng:8080/healthz"
+    interval: 30s
+    conditions:
+      - "[STATUS] == 200"
+
+  # --- Databases & Infrastructure ---
+  - name: PostgreSQL Database
+    group: Data & Storage
+    url: "tcp://postgres:5432"
+    interval: 30s
+    conditions:
+      - "[CONNECTED] == true"
+
+  - name: Redis Cache & Event Broker
+    group: Data & Storage
+    url: "tcp://redis:6379"
+    interval: 30s
+    conditions:
+      - "[CONNECTED] == true"
+
+  - name: ClickHouse Analytics Engine
+    group: Data & Storage
+    url: "http://clickhouse:8123/ping"
+    interval: 30s
+    conditions:
+      - "[STATUS] == 200"
+
+  - name: ClickHouse Admin UI
+    group: Data & Storage
+    url: "http://chouse-ui:5521/"
+    interval: 30s
+    conditions:
+      - "[STATUS] == 200"
+
+  - name: SeaweedFS Filer Console
+    group: Storage
+    url: "http://seaweedfs:8888/"
+    interval: 30s
+    conditions:
+      - "[STATUS] == 200"
+
+  - name: SeaweedFS S3 Gateway
+    group: Storage
+    url: "http://seaweedfs:8333/"
+    interval: 30s
+    conditions:
+      - "[STATUS] == 403"
+
+  # --- Knowledge & Documentation ---
+  - name: User Documentation (Diataxis)
+    group: Documentation
+    url: "http://docs-user:8080/"
+    interval: 30s
+    conditions:
+      - "[STATUS] == 200"
+
+  - name: Architecture Documentation (arc42 & C4)
+    group: Documentation
+    url: "http://docs-architecture:8080/"
+    interval: 30s
+    conditions:
+      - "[STATUS] == 200"

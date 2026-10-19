@@ -1,0 +1,200 @@
+{
+  "__inputs": [],
+  "__requires": [
+    { "type": "datasource", "id": "prometheus", "name": "Prometheus", "version": "1.0.0" },
+    { "type": "datasource", "id": "loki", "name": "Loki", "version": "1.0.0" }
+  ],
+  "id": null,
+  "uid": "llm-stack-object-storage",
+  "title": "Object Storage & S3 (SeaweedFS)",
+  "description": "SeaweedFS S3 gateway & filer observability: request throughput, storage volume activity, read/write latencies, and service logs.",
+  "tags": ["llm-stack", "storage", "s3", "seaweedfs", "filer"],
+  "timezone": "browser",
+  "refresh": "15s",
+  "schemaVersion": 39,
+  "version": 1,
+  "time": { "from": "now-1h", "to": "now" },
+  "panels": [
+    {
+      "id": 1,
+      "type": "row",
+      "title": "S3 & Filer Gateway Overview",
+      "gridPos": { "x": 0, "y": 0, "w": 24, "h": 1 },
+      "collapsed": false
+    },
+    {
+      "id": 2,
+      "title": "S3 API Request Rate",
+      "type": "stat",
+      "gridPos": { "x": 0, "y": 1, "w": 6, "h": 4 },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "colorMode": "value",
+        "graphMode": "sparkline"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [{ "color": "blue", "value": null }]
+          }
+        }
+      },
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "targets": [
+        { "expr": "sum(rate(traefik_service_requests_total{service=~\"seaweedfs-s3.*\"}[1m])) or vector(0)", "legendFormat": "S3 req/s", "refId": "A" }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Filer Console Request Rate",
+      "type": "stat",
+      "gridPos": { "x": 6, "y": 1, "w": 6, "h": 4 },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "colorMode": "value",
+        "graphMode": "sparkline"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [{ "color": "purple", "value": null }]
+          }
+        }
+      },
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "targets": [
+        { "expr": "sum(rate(traefik_service_requests_total{service=~\"seaweedfs-console.*\"}[1m])) or vector(0)", "legendFormat": "Filer req/s", "refId": "A" }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "Memory Consumption",
+      "type": "stat",
+      "gridPos": { "x": 12, "y": 1, "w": 6, "h": 4 },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "colorMode": "value",
+        "graphMode": "sparkline"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [{ "color": "green", "value": null }]
+          }
+        }
+      },
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "targets": [
+        { "expr": "container_memory_usage_bytes{container_label_com_docker_compose_service=\"seaweedfs\"}", "legendFormat": "SeaweedFS RAM", "refId": "A" }
+      ]
+    },
+    {
+      "id": 5,
+      "title": "CPU Consumption",
+      "type": "stat",
+      "gridPos": { "x": 18, "y": 1, "w": 6, "h": 4 },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "colorMode": "value",
+        "graphMode": "sparkline"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [{ "color": "green", "value": null }]
+          }
+        }
+      },
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "targets": [
+        { "expr": "rate(container_cpu_usage_seconds_total{container_label_com_docker_compose_service=\"seaweedfs\"}[1m])", "legendFormat": "CPU load", "refId": "A" }
+      ]
+    },
+    {
+      "id": 10,
+      "type": "row",
+      "title": "Throughput & HTTP Traffic",
+      "gridPos": { "x": 0, "y": 5, "w": 24, "h": 1 },
+      "collapsed": false
+    },
+    {
+      "id": 11,
+      "title": "S3 & Console Request Traffic Over Time",
+      "type": "timeseries",
+      "gridPos": { "x": 0, "y": 6, "w": 12, "h": 8 },
+      "options": {
+        "tooltip": { "mode": "multi" },
+        "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["mean", "max", "lastNotNull"] }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "custom": { "drawStyle": "line", "lineInterpolation": "smooth", "fillOpacity": 15 }
+        }
+      },
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "targets": [
+        { "expr": "sum(rate(traefik_service_requests_total{service=~\"seaweedfs-s3.*\"}[1m]))", "legendFormat": "S3 API Requests", "refId": "A" },
+        { "expr": "sum(rate(traefik_service_requests_total{service=~\"seaweedfs-console.*\"}[1m]))", "legendFormat": "Filer Console Requests", "refId": "B" }
+      ]
+    },
+    {
+      "id": 12,
+      "title": "HTTP Status Distribution",
+      "type": "timeseries",
+      "gridPos": { "x": 12, "y": 6, "w": 12, "h": 8 },
+      "options": {
+        "tooltip": { "mode": "multi" },
+        "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["mean", "max", "lastNotNull"] }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "custom": { "drawStyle": "line", "lineInterpolation": "smooth", "fillOpacity": 15 }
+        }
+      },
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "targets": [
+        { "expr": "sum(rate(traefik_service_requests_total{service=~\"seaweedfs.*\",code=~\"2..\"}[1m]))", "legendFormat": "2xx OK", "refId": "A" },
+        { "expr": "sum(rate(traefik_service_requests_total{service=~\"seaweedfs.*\",code=~\"4..\"}[1m]))", "legendFormat": "4xx Client Error", "refId": "B" },
+        { "expr": "sum(rate(traefik_service_requests_total{service=~\"seaweedfs.*\",code=~\"5..\"}[1m]))", "legendFormat": "5xx Server Error", "refId": "C" }
+      ]
+    },
+    {
+      "id": 20,
+      "type": "row",
+      "title": "SeaweedFS Logs",
+      "gridPos": { "x": 0, "y": 14, "w": 24, "h": 1 },
+      "collapsed": false
+    },
+    {
+      "id": 21,
+      "title": "SeaweedFS Master, Filer & S3 Logs",
+      "type": "logs",
+      "gridPos": { "x": 0, "y": 15, "w": 24, "h": 8 },
+      "options": {
+        "dedupStrategy": "none",
+        "showLabels": false,
+        "showTime": true,
+        "wrapLogMessage": false,
+        "sortOrder": "Descending"
+      },
+      "datasource": { "type": "loki", "uid": "loki" },
+      "targets": [
+        { "expr": "{container=~\".*seaweedfs.*\"}", "refId": "A" }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,11 @@
+apiVersion: 1
+
+providers:
+  - name: 'LLM-Stack Dashboards'
+    orgId: 1
+    folder: 'LLM Stack'
+    type: file
+    disableDeletion: false
+    editable: true
+    options:
+      path: /etc/grafana/provisioning/dashboards/json

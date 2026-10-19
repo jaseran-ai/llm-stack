@@ -1,0 +1,15 @@
+# ==============================================================================
+# Prometheus Custom Targets Example (File Service Discovery)
+# ==============================================================================
+# To add private/custom scrape targets without editing git-tracked files:
+# 1. Copy this file into prometheus/targets.d/<any-name>.yml
+# 2. prometheus/targets.d/ is gitignored, keeping your private endpoints safe.
+# 3. Prometheus automatically reloads targets without restarting the container.
+# ==============================================================================
+
+- targets:
+    - '192.0.2.10:8080' # Remote GPU inference node IP:port
+  labels:
+    job: 'llama-server'
+    env: 'production'
+    device: 'gpu-node'

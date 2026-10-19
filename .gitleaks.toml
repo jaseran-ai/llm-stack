@@ -1,0 +1,44 @@
+title = "llm-stack Gitleaks Configuration"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Ignore documentation examples, template samples, agent workspace cache, and test fixtures"
+paths = [
+    '''(^|/)\.env$''',
+    '''(^|/)\.env\.bak.*''',
+    '''(^|/)\.env\.example$''',
+    '''(^|/)\.vault_keys\.json$''',
+    '''(^|/)authentik/blueprints/.*\.yaml$''',
+    '''(^|/)cloudflare/terraform\.tf.*''',
+    '''(^|/)traefik/certs/.*''',
+    '''(^|/)README\.md$''',
+    '''(^|/)ADDING_AN_APPLICATION\.md$''',
+    '''(^|/)vault/README\.md$''',
+    '''(^|/)authentik/README\.md$''',
+    '''(^|/)clickhouse/README\.md$''',
+    '''(^|/)litellm/README\.md$''',
+    '''(^|/)ROADMAP\.md$''',
+    '''(^|/)docs/.*''',
+    '''(^|/)workspace/.*''',
+    '''(^|/)authentik/blueprints/.*\.template$''',
+    '''(^|/)scripts/smoke_test\.py$''',
+    '''(^|/)betterleaks/tests/.*''',
+    '''(^|/)uat/runtime/.*''',
+    '''(^|/)scripts/tests/.*''',
+    '''(^|/)vault/secrets_ram/.*''',
+    '''(^|/)vault/\.secrets_ram\.legacy.*''',
+    '''(^|/)__pycache__/.*''',
+    '''.*\.pyc$''',
+]
+stopwords = [
+    "CHANGE_ME_OR_GENERATED_BY_SETUP",
+    "Admin1234!",
+    "cmct8rhde0006lm078h7kb93c",
+    "cmct8ruwk000blm07y026jjpp",
+    "generated_random_256bit_hex_secret",
+    "generated_random_base64_secret",
+    "clickhouse_password_change_me",
+    "seaweed_sample_access_key",
+]

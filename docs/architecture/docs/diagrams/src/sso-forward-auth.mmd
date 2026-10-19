@@ -1,0 +1,18 @@
+sequenceDiagram
+    autonumber
+    actor User as User / Browser
+    participant Traefik as Traefik Ingress (:443)
+    participant Auth as Authentik Embedded Outpost
+    participant App as Target App (e.g. Open WebUI)
+
+    User->>Traefik: GET / (with session cookie)
+    Traefik->>Auth: Forward-Auth Check (GET /outpost.goauthentik.io/auth/traefik)
+    alt Authenticated & Authorized (Group Member)
+        Auth-->>Traefik: HTTP 200 OK (X-authentik-username: user)
+        Traefik->>App: Upstream Proxy Request (with identity headers)
+        App-->>Traefik: HTTP 200 OK Response
+        Traefik-->>User: HTTP 200 OK Delivery
+    else Unauthenticated
+        Auth-->>Traefik: HTTP 401 / 302 Redirect
+        Traefik-->>User: HTTP 302 Redirect to Authentik Login Flow
+    end

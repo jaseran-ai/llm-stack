@@ -1,0 +1,38 @@
+{
+  "link.title.Architecture (arc42)": {
+    "message": "Architecture (arc42)",
+    "description": "The title of the footer links column with title=Architecture (arc42) in the footer"
+  },
+  "link.title.Decisions & Governance": {
+    "message": "Decisions & Governance",
+    "description": "The title of the footer links column with title=Decisions & Governance in the footer"
+  },
+  "link.item.label.1. Goals & Requirements": {
+    "message": "1. Goals & Requirements",
+    "description": "The label of footer link with label=1. Goals & Requirements linking to /introduction-and-goals"
+  },
+  "link.item.label.5. Building Block View (C4)": {
+    "message": "5. Building Block View (C4)",
+    "description": "The label of footer link with label=5. Building Block View (C4) linking to /building-block-view"
+  },
+  "link.item.label.6. Runtime View (Sequences)": {
+    "message": "6. Runtime View (Sequences)",
+    "description": "The label of footer link with label=6. Runtime View (Sequences) linking to /runtime-view"
+  },
+  "link.item.label.9. Architecture Decisions (ADR)": {
+    "message": "9. Architecture Decisions (ADR)",
+    "description": "The label of footer link with label=9. Architecture Decisions (ADR) linking to /architecture-decisions"
+  },
+  "link.item.label.11. Risks & Technical Debt": {
+    "message": "11. Risks & Technical Debt",
+    "description": "The label of footer link with label=11. Risks & Technical Debt linking to /risks-and-technical-debt"
+  },
+  "link.item.label.12. Glossary": {
+    "message": "12. Glossary",
+    "description": "The label of footer link with label=12. Glossary linking to /glossary"
+  },
+  "copyright": {
+    "message": "Internal & Confidential. Copyright © 2026 LLM Stack Engineering.",
+    "description": "The footer copyright"
+  }
+}

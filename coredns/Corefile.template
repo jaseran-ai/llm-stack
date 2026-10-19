@@ -1,0 +1,17 @@
+.:53 {
+    # Automatic wildcard and apex resolution for the LLM Stack domain
+    template IN A ${DOMAIN} {
+        match "(^|\.)${ESCAPED_DOMAIN}\.$"
+        answer "{{ .Name }} 60 IN A ${LAN_IP}"
+        fallthrough
+    }
+
+    # Upstream resolver forwarding for all other public queries
+    forward . 1.1.1.1 8.8.8.8 {
+        max_concurrent 1000
+    }
+
+    cache 30
+    errors
+    log
+}

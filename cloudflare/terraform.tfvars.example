@@ -1,0 +1,12 @@
+# Example Terraform variables configuration for Cloudflare Tunnel & DNS management.
+# Copy this file to terraform.tfvars (which is ignored by git) and fill in your real credentials.
+
+cloudflare_api_token  = "your_cloudflare_api_token_here"
+cloudflare_account_id = "your_cloudflare_account_id_here"
+# zone_name: the root Cloudflare DNS zone (e.g. "example.com")
+zone_name             = "example.com"
+# domain: the domain under which services are served (may be a subdomain, e.g. "l.example.com")
+# Subdomains will be created as <subdomain>.<domain> (e.g. "chat.l.example.com")
+domain                = "example.com"
+tunnel_name           = "llm-stack-tunnel"
+tunnel_secret         = "your_32_byte_base64_secret_here"

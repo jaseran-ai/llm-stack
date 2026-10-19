@@ -1,0 +1,34 @@
+sources:
+  docker_logs:
+    type: docker_logs
+
+transforms:
+  parse_logs:
+    type: remap
+    inputs:
+      - docker_logs
+    source: |
+      .container_name = replace!(.container_name, "/", "")
+
+sinks:
+  loki_sink:
+    type: loki
+    inputs:
+      - parse_logs
+    endpoint: "http://loki:3100"
+    # Newer Vector versions require either a static string prefix on every templated label
+    # (which would change the actual label values sent to Loki - "container_name" would
+    # become e.g. "static_{{ container_name }}" - breaking any existing Grafana
+    # dashboard/log query filtering on the exact current label values) or this explicit
+    # opt-out. The confinement check this disables guards against a log *producer*
+    # controlling a template's value (e.g. injecting a crafted log line that rewrites where
+    # its own event gets routed) - not applicable here, since every templated field below
+    # (container_name, image, stream) comes from Docker's own container metadata, never from
+    # parsed log line content a process inside the container could influence.
+    dangerously_allow_unconfined_template_resolution: true
+    encoding:
+      codec: text
+    labels:
+      container: "{{ container_name }}"
+      image: "{{ image }}"
+      stream: "{{ stream }}"

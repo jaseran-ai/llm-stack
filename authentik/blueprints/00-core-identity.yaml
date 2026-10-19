@@ -1,0 +1,105 @@
+version: 1
+metadata:
+  name: llm-stack - Core Identity
+  labels:
+    blueprints.goauthentik.io/description: |
+      Declares core RBAC groups (admins, users), standard accounts (akadmin, admin, alice, bob),
+      shared OIDC scope mappings (groups, email_verified), and the default brand.
+entries:
+  - model: authentik_core.group
+    state: present
+    identifiers:
+      name: admins
+    id: group-admins
+
+  - model: authentik_core.group
+    state: present
+    identifiers:
+      name: users
+    id: group-users
+
+  - model: authentik_core.user
+    state: present
+    identifiers:
+      username: akadmin
+    id: user-akadmin
+    attrs:
+      is_superuser: true
+      groups:
+        - !Find [authentik_core.group, [name, "authentik Admins"]]
+
+  - model: authentik_core.user
+    state: present
+    identifiers:
+      username: admin
+    id: user-admin
+    attrs:
+      name: Admin
+      email: !Format ["admin@%s", !Env EMAIL_DOMAIN]
+      is_active: true
+      is_superuser: false
+      path: users
+      groups:
+        - !KeyOf group-admins
+        - !KeyOf group-users
+      password: !Env UI_PASSWORD
+
+  - model: authentik_core.user
+    state: present
+    identifiers:
+      username: alice
+    id: user-alice
+    attrs:
+      name: Alice
+      email: !Format ["alice@%s", !Env EMAIL_DOMAIN]
+      is_active: true
+      path: users
+      groups:
+        - !KeyOf group-users
+
+  - model: authentik_core.user
+    state: present
+    identifiers:
+      username: bob
+    id: user-bob
+    attrs:
+      name: Bob
+      email: !Format ["bob@%s", !Env EMAIL_DOMAIN]
+      is_active: true
+      path: users
+      groups:
+        - !KeyOf group-users
+
+  - model: authentik_providers_oauth2.scopemapping
+    state: present
+    identifiers:
+      name: llm-stack-groups-scope
+    id: scope-groups
+    attrs:
+      scope_name: groups
+      description: "Group membership"
+      expression: |
+        return {
+            "groups": [group.name for group in request.user.groups.all()],
+        }
+
+  - model: authentik_providers_oauth2.scopemapping
+    state: present
+    identifiers:
+      name: llm-stack-email-verified-scope
+    id: scope-email-verified
+    attrs:
+      scope_name: email
+      description: "Verified email address"
+      expression: |
+        return {
+            "email": request.user.email,
+            "email_verified": True,
+        }
+
+  - model: authentik_brands.brand
+    state: present
+    identifiers:
+      default: true
+    attrs:
+      domain: !Format ["authentik.%s", !Env DOMAIN]

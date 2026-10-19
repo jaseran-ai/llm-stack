@@ -1,0 +1,361 @@
+{
+  "__inputs": [],
+  "__requires": [
+    { "type": "datasource", "id": "prometheus", "name": "Prometheus", "version": "1.0.0" }
+  ],
+  "id": null,
+  "uid": "llm-stack-llama-inference",
+  "title": "LLM Inference Engine (llama-server)",
+  "description": "Real-time metrics for llama-server: prefill speed, generation speed, KV cache efficiency, slot concurrency, and sequence lengths.",
+  "tags": ["llm-stack", "llama-server", "inference", "gpu"],
+  "timezone": "browser",
+  "refresh": "10s",
+  "schemaVersion": 39,
+  "version": 1,
+  "time": { "from": "now-1h", "to": "now" },
+  "panels": [
+    {
+      "id": 1,
+      "type": "row",
+      "title": "Inference Health & Real-time Gauges",
+      "gridPos": { "x": 0, "y": 0, "w": 24, "h": 1 },
+      "collapsed": false
+    },
+    {
+      "id": 2,
+      "title": "Server Health",
+      "type": "stat",
+      "gridPos": { "x": 0, "y": 1, "w": 4, "h": 4 },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "colorMode": "background",
+        "graphMode": "none"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "0": { "text": "DOWN", "color": "red" },
+                "1": { "text": "ONLINE", "color": "green" }
+              }
+            }
+          ],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "green", "value": 1 }
+            ]
+          }
+        }
+      },
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "targets": [
+        { "expr": "up{job=\"llama-server\"}", "legendFormat": "Status", "refId": "A" }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Active Inferences",
+      "type": "stat",
+      "gridPos": { "x": 4, "y": 1, "w": 4, "h": 4 },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "colorMode": "background",
+        "graphMode": "none"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 2 },
+              { "color": "red", "value": 4 }
+            ]
+          }
+        }
+      },
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "targets": [
+        { "expr": "llamacpp:requests_processing", "legendFormat": "Active", "refId": "A" }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "Deferred / Queue",
+      "type": "stat",
+      "gridPos": { "x": 8, "y": 1, "w": 4, "h": 4 },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "colorMode": "background",
+        "graphMode": "none"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "red", "value": 1 }
+            ]
+          }
+        }
+      },
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "targets": [
+        { "expr": "llamacpp:requests_deferred", "legendFormat": "Queued", "refId": "A" }
+      ]
+    },
+    {
+      "id": 5,
+      "title": "Busy Decode Slots",
+      "type": "stat",
+      "gridPos": { "x": 12, "y": 1, "w": 4, "h": 4 },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "colorMode": "background",
+        "graphMode": "none"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "orange", "value": 4 },
+              { "color": "red", "value": 8 }
+            ]
+          }
+        }
+      },
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "targets": [
+        { "expr": "llamacpp:n_busy_slots_per_decode", "legendFormat": "Slots", "refId": "A" }
+      ]
+    },
+    {
+      "id": 6,
+      "title": "Generation Speed (Tokens/s)",
+      "type": "stat",
+      "gridPos": { "x": 16, "y": 1, "w": 4, "h": 4 },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "colorMode": "value",
+        "graphMode": "sparkline"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "tokens/s",
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "blue", "value": null },
+              { "color": "green", "value": 5 }
+            ]
+          }
+        }
+      },
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "targets": [
+        { "expr": "rate(llamacpp:tokens_predicted_total[1m]) / clamp_min(rate(llamacpp:tokens_predicted_seconds_total[1m]), 0.001)", "legendFormat": "tok/s", "refId": "A" }
+      ]
+    },
+    {
+      "id": 7,
+      "title": "Prefill Speed (Prompt tok/s)",
+      "type": "stat",
+      "gridPos": { "x": 20, "y": 1, "w": 4, "h": 4 },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "colorMode": "value",
+        "graphMode": "sparkline"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "tokens/s",
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "purple", "value": null },
+              { "color": "green", "value": 50 }
+            ]
+          }
+        }
+      },
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "targets": [
+        { "expr": "rate(llamacpp:prompt_tokens_total[1m]) / clamp_min(rate(llamacpp:prompt_seconds_total[1m]), 0.001)", "legendFormat": "tok/s", "refId": "A" }
+      ]
+    },
+    {
+      "id": 10,
+      "type": "row",
+      "title": "Token Speeds & Throughput Over Time",
+      "gridPos": { "x": 0, "y": 5, "w": 24, "h": 1 },
+      "collapsed": false
+    },
+    {
+      "id": 11,
+      "title": "Generation & Prefill Speed (Tokens/sec)",
+      "type": "timeseries",
+      "gridPos": { "x": 0, "y": 6, "w": 12, "h": 8 },
+      "options": {
+        "tooltip": { "mode": "multi" },
+        "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["mean", "max", "lastNotNull"] }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "tokens/s",
+          "custom": { "drawStyle": "line", "lineInterpolation": "smooth", "fillOpacity": 10 }
+        }
+      },
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "targets": [
+        { "expr": "rate(llamacpp:tokens_predicted_total[1m]) / clamp_min(rate(llamacpp:tokens_predicted_seconds_total[1m]), 0.001)", "legendFormat": "Generation Speed (tok/s)", "refId": "A" },
+        { "expr": "rate(llamacpp:prompt_tokens_total[1m]) / clamp_min(rate(llamacpp:prompt_seconds_total[1m]), 0.001)", "legendFormat": "Prefill Speed (prompt tok/s)", "refId": "B" }
+      ]
+    },
+    {
+      "id": 12,
+      "title": "Token Throughput (Tokens Processed per Second)",
+      "type": "timeseries",
+      "gridPos": { "x": 12, "y": 6, "w": 12, "h": 8 },
+      "options": {
+        "tooltip": { "mode": "multi" },
+        "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["mean", "max", "lastNotNull"] }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "tokens/s",
+          "custom": { "drawStyle": "line", "lineInterpolation": "smooth", "fillOpacity": 15 }
+        }
+      },
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "targets": [
+        { "expr": "rate(llamacpp:prompt_tokens_total[1m])", "legendFormat": "Prompt Tokens (New)", "refId": "A" },
+        { "expr": "rate(llamacpp:prompt_tokens_cached_total[1m])", "legendFormat": "Prompt Tokens (Cached)", "refId": "B" },
+        { "expr": "rate(llamacpp:tokens_predicted_total[1m])", "legendFormat": "Generated Tokens", "refId": "C" }
+      ]
+    },
+    {
+      "id": 20,
+      "type": "row",
+      "title": "KV Cache & Memory Optimization",
+      "gridPos": { "x": 0, "y": 14, "w": 24, "h": 1 },
+      "collapsed": false
+    },
+    {
+      "id": 21,
+      "title": "KV Cache Hit Rate (%)",
+      "type": "gauge",
+      "gridPos": { "x": 0, "y": 15, "w": 6, "h": 8 },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "showThresholdLabels": false,
+        "showThresholdMarkers": true
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "max": 100,
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "yellow", "value": 30 },
+              { "color": "green", "value": 60 }
+            ]
+          }
+        }
+      },
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "targets": [
+        { "expr": "100 * (rate(llamacpp:prompt_tokens_cached_total[5m]) / clamp_min(rate(llamacpp:prompt_tokens_total[5m]) + rate(llamacpp:prompt_tokens_cached_total[5m]), 0.001))", "legendFormat": "Cache Hit %", "refId": "A" }
+      ]
+    },
+    {
+      "id": 22,
+      "title": "KV Cache Reuse Over Time",
+      "type": "timeseries",
+      "gridPos": { "x": 6, "y": 15, "w": 18, "h": 8 },
+      "options": {
+        "tooltip": { "mode": "multi" },
+        "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["mean", "max", "lastNotNull"] }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "tokens/s",
+          "custom": { "drawStyle": "line", "lineInterpolation": "smooth", "fillOpacity": 15 }
+        }
+      },
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "targets": [
+        { "expr": "rate(llamacpp:prompt_tokens_cached_total[1m])", "legendFormat": "Reused Cache Tokens / s", "refId": "A" },
+        { "expr": "rate(llamacpp:prompt_tokens_total[1m])", "legendFormat": "Fresh Prompt Tokens / s", "refId": "B" }
+      ]
+    },
+    {
+      "id": 30,
+      "type": "row",
+      "title": "Slots Concurrency, Decodes & Sequence Context",
+      "gridPos": { "x": 0, "y": 23, "w": 24, "h": 1 },
+      "collapsed": false
+    },
+    {
+      "id": 31,
+      "title": "Slot Utilization & Inferences In-Flight",
+      "type": "timeseries",
+      "gridPos": { "x": 0, "y": 24, "w": 12, "h": 8 },
+      "options": {
+        "tooltip": { "mode": "multi" },
+        "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["mean", "max", "lastNotNull"] }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": { "drawStyle": "line", "lineInterpolation": "stepAfter", "fillOpacity": 15 }
+        }
+      },
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "targets": [
+        { "expr": "llamacpp:requests_processing", "legendFormat": "Active Inferences", "refId": "A" },
+        { "expr": "llamacpp:n_busy_slots_per_decode", "legendFormat": "Busy Decode Slots", "refId": "B" },
+        { "expr": "llamacpp:requests_deferred", "legendFormat": "Deferred / Queued", "refId": "C" }
+      ]
+    },
+    {
+      "id": 32,
+      "title": "Cumulative Decodes & Max Context Length",
+      "type": "timeseries",
+      "gridPos": { "x": 12, "y": 24, "w": 12, "h": 8 },
+      "options": {
+        "tooltip": { "mode": "multi" },
+        "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull"] }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": { "drawStyle": "line", "lineInterpolation": "linear" }
+        }
+      },
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "targets": [
+        { "expr": "llamacpp:n_decode_total", "legendFormat": "Total Decode Calls", "refId": "A" },
+        { "expr": "llamacpp:n_tokens_max", "legendFormat": "Max Sequence Length (Tokens)", "refId": "B" }
+      ]
+    }
+  ]
+}

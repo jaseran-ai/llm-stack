@@ -1,0 +1,12 @@
+[Unit]
+Description=LLM Stack production Langfuse ingestion probe
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=${REPO_DIR}
+Environment=SMOKE_ENVIRONMENT=production
+Environment=SMOKE_PROD_LANGFUSE_INGESTION=1
+ExecStart=/usr/bin/python3 ${REPO_DIR}/scripts/langfuse_ingestion_monitor.py
+TimeoutStartSec=600

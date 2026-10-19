@@ -1,0 +1,19 @@
+sequenceDiagram
+    autonumber
+    actor Client as Client / Chat UI
+    participant Gateway as LiteLLM Gateway (:4000)
+    participant Guardrail as Betterleaks Presidio (:8080)
+    participant Redis as Redis (Vault AES-256-GCM)
+    participant Engine as Local Inference (Ollama)
+
+    Client->>Gateway: POST /v1/chat/completions (Prompt with API key)
+    Gateway->>Guardrail: Pre-call Inspection (POST /v1/anonymize)
+    Guardrail->>Guardrail: Regex & NLP NER PII Analysis
+    Guardrail->>Redis: Store Secret Token Mapping (AES-256-GCM encrypted)
+    Guardrail-->>Gateway: Anonymized Prompt (Surrogate tokens)
+    Gateway->>Engine: Ingest Anonymized Prompt
+    Engine-->>Gateway: Raw Model Completion
+    Gateway->>Guardrail: Post-call De-anonymize (POST /v1/deanonymize)
+    Guardrail->>Redis: Fetch & Decrypt Original Tokens
+    Guardrail-->>Gateway: Restored Safe Completion
+    Gateway-->>Client: Final Response Stream

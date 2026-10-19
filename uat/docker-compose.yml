@@ -1,0 +1,95 @@
+name: llm-stack-uat
+
+services:
+  docker:
+    image: llm-stack/uat-docker:29.7.2-1
+    build:
+      context: .
+      dockerfile: dind.Dockerfile
+      pull: true
+    container_name: llm-stack-uat-docker
+    privileged: true
+    restart: "no"
+    environment:
+      DOCKER_TLS_CERTDIR: /certs
+    extra_hosts:
+      - "${UAT_DOMAIN}:127.0.0.1"
+      - "home.${UAT_DOMAIN}:127.0.0.1"
+      - "authentik.${UAT_DOMAIN}:127.0.0.1"
+      - "chat.${UAT_DOMAIN}:127.0.0.1"
+      - "grafana.${UAT_DOMAIN}:127.0.0.1"
+      - "litellm.${UAT_DOMAIN}:127.0.0.1"
+      - "langfuse.${UAT_DOMAIN}:127.0.0.1"
+      - "logs.${UAT_DOMAIN}:127.0.0.1"
+      - "searxng.${UAT_DOMAIN}:127.0.0.1"
+      - "s3.${UAT_DOMAIN}:127.0.0.1"
+      - "s3-console.${UAT_DOMAIN}:127.0.0.1"
+      - "clickhouse.${UAT_DOMAIN}:127.0.0.1"
+      - "qdrant.${UAT_DOMAIN}:127.0.0.1"
+      - "status.${UAT_DOMAIN}:127.0.0.1"
+      - "vault.${UAT_DOMAIN}:127.0.0.1"
+      - "traefik.${UAT_DOMAIN}:127.0.0.1"
+      - "alertmanager.${UAT_DOMAIN}:127.0.0.1"
+      - "docs.${UAT_DOMAIN}:127.0.0.1"
+      - "arch.${UAT_DOMAIN}:127.0.0.1"
+    command:
+      - --storage-driver=overlay2
+      - --log-driver=json-file
+      - --log-opt=max-size=10m
+      - --log-opt=max-file=3
+    ports:
+      - "127.0.0.1:${UAT_DOCKER_PORT}:2376"
+    volumes:
+      - docker-data:/var/lib/docker
+      - ollama-model-cache:/var/lib/llm-stack-uat/ollama-models
+      - ./runtime/certs:/certs
+      - ${UAT_WORKTREE}:${UAT_WORKTREE}
+      - type: volume
+        source: secrets-ram
+        target: /dev/shm/llm-stack-vault-secrets-${UAT_SECRETS_RAM_ID}
+    healthcheck:
+      test: ["CMD", "docker", "info"]
+      interval: 3s
+      timeout: 5s
+      retries: 20
+    deploy:
+      resources:
+        limits:
+          memory: 16G
+
+  smoke-test:
+    profiles: ["smoke"]
+    image: python:3.14.7-alpine3.24@sha256:05b2b8b732ecd268fee8727a369f936f022d1321b59befd13c30ede22769dcdc
+    network_mode: service:docker
+    depends_on:
+      docker:
+        condition: service_healthy
+    working_dir: ${UAT_WORKTREE}
+    read_only: true
+    tmpfs:
+      - /tmp
+    environment:
+      SMOKE_ENVIRONMENT: uat
+      SMOKE_UAT_IDENTITY_FILE: ${UAT_WORKTREE}/.uat-identity
+      SMOKE_UAT_TRAEFIK_IP: 127.0.0.1
+    entrypoint: ["/bin/sh", "/uat/smoke-test-entrypoint.sh"]
+    volumes:
+      - ${UAT_WORKTREE}:${UAT_WORKTREE}:ro
+      - type: volume
+        source: secrets-ram
+        target: /dev/shm/llm-stack-vault-secrets-${UAT_SECRETS_RAM_ID}
+        read_only: true
+      - ./smoke-test-entrypoint.sh:/uat/smoke-test-entrypoint.sh:ro
+
+volumes:
+  docker-data:
+    name: ${UAT_DOCKER_CACHE_VOLUME}
+  ollama-model-cache:
+    name: ${UAT_OLLAMA_MODEL_VOLUME}
+  secrets-ram:
+    name: llm-stack-uat-secrets-${UAT_RUN_ID}
+    driver: local
+    driver_opts:
+      type: tmpfs
+      device: tmpfs
+      o: "size=16m,uid=${UAT_WORKTREE_UID},gid=${UAT_WORKTREE_GID},mode=0700"

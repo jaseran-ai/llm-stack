@@ -1,0 +1,40 @@
+#!/usr/bin/env bash
+# Scan staged changes in the pinned Gitleaks container, including linked worktrees.
+
+set -euo pipefail
+
+repo_root="$(git rev-parse --show-toplevel)"
+git_common_dir="$(git rev-parse --path-format=absolute --git-common-dir)"
+
+staged_status=0
+git diff --cached --quiet -- || staged_status=$?
+
+if (( staged_status == 0 )); then
+    echo "Gitleaks: no staged changes to scan."
+    exit 0
+fi
+if (( staged_status != 1 )); then
+    echo "Gitleaks: unable to inspect staged changes; commit blocked." >&2
+    exit 1
+fi
+
+echo "Running Gitleaks secret scan on staged changes..."
+
+scan_status=0
+scan_output="$(docker run --rm --network none \
+    --user "$(id -u):$(id -g)" \
+    --mount "type=bind,src=${repo_root},dst=${repo_root},readonly" \
+    --mount "type=bind,src=${git_common_dir},dst=${git_common_dir},readonly" \
+    -w "${repo_root}" zricethezav/gitleaks:v8.30.1 \
+    git --pre-commit --staged --redact --no-color --verbose \
+    --config="${repo_root}/.gitleaks.toml" "${repo_root}" 2>&1)" || scan_status=$?
+
+printf '%s\n' "${scan_output}"
+
+# Gitleaks v8.30.1 can log a Git error while returning success and scanning zero bytes.
+if (( scan_status != 0 )) || printf '%s\n' "${scan_output}" | grep -Eiq '(^|[[:space:]])(ERR|FTL|fatal:)([[:space:]]|$)'; then
+    echo "Gitleaks: staged scan failed or found a secret; commit blocked." >&2
+    exit 1
+fi
+
+echo "Gitleaks: no secrets detected in staged changes."

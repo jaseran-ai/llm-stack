@@ -1,0 +1,135 @@
+name: Security Scan (Trivy)
+
+on:
+  # Full image scans are optional for routine pushes and pull requests.
+  # Run one against the exact candidate before a release or image promotion.
+  # Automated weekly security scan (every Monday at 04:00 UTC).
+  schedule:
+    - cron: '0 4 * * 1'
+
+  # Allows manual on-demand triggering from GitHub Actions or GitHub CLI.
+  workflow_dispatch:
+
+jobs:
+  # Computes two image matrices from docker-compose.yml (via "docker compose config", the
+  # same technique make trivy/compose-validate use), rather than a hardcoded list in this
+  # file - so a new/changed service is scanned automatically, with no risk of the workflow
+  # silently drifting out of sync with the compose file. Split in two because a "build:"
+  # service (e.g. caddy, custom Cloudflare DNS plugin build - see caddy/README.md) has no
+  # pullable registry ref for trivy-action to fetch directly; it must be built locally first,
+  # unlike every other service's already-published "image:" ref. Uses .env.example as a
+  # stand-in, same as the docker-compose-validate job: only the image list is needed, no real
+  # secrets.
+  trivy-matrix:
+    runs-on: self-hosted
+    timeout-minutes: 10
+    outputs:
+      images: ${{ steps.list.outputs.images }}
+      build_services: ${{ steps.list.outputs.build_services }}
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - id: list
+        run: |
+          cp .env.example .env
+          mkdir -p litellm
+          touch litellm/litellm.env
+          build_services="$(docker compose config --format json | jq -r '.services | to_entries[] | select(.value.build != null) | .key' | sort -u)"
+          images="$(docker compose config --images | sort -u)"
+          # Drop any image belonging to a build: service (no pullable ref) from the
+          # registry-pull list - it's covered by trivy-scan-build instead.
+          if [ -n "$build_services" ]; then
+            build_images="$(for s in $build_services; do docker compose config --images "$s"; done | sort -u)"
+            images="$(comm -23 <(printf '%s\n' "$images") <(printf '%s\n' "$build_images"))"
+          fi
+          rm -f .env
+          images_json=$(printf '%s\n' "$images" | jq -R -s -c 'split("\n") | map(select(length > 0))')
+          build_json=$(printf '%s\n' "$build_services" | jq -R -s -c 'split("\n") | map(select(length > 0))')
+          echo "images=$images_json" >> "$GITHUB_OUTPUT"
+          echo "build_services=$build_json" >> "$GITHUB_OUTPUT"
+
+  # Scans every registry-published image declared in docker-compose.yml for known
+  # CRITICAL/HIGH CVEs with Trivy, one job per image (parallel, and one image's scan
+  # failure/timeout doesn't block the others). "ignore-unfixed" only flags CVEs that
+  # actually have a fix available upstream - the project cannot act on a CVE with no patched
+  # version yet, so failing CI on those would be pure noise.
+  trivy-scan:
+    needs: trivy-matrix
+    runs-on: self-hosted
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        image: ${{ fromJson(needs.trivy-matrix.outputs.images) }}
+    steps:
+      - uses: actions/checkout@v7.0.1
+      # See .github/trivy-accepted-risk.txt: a short, individually-reviewed list of images
+      # already at the latest available upstream tag/digest, with residual CVEs confirmed
+      # unfixable from this project's side. The scan below still runs and reports findings
+      # for these either way - this only decides whether the job fails the build over them.
+      - name: Check for a tracked, accepted-risk exception
+        id: risk
+        run: |
+          if grep -qxF "${{ matrix.image }}" .github/trivy-accepted-risk.txt; then
+            echo "exit_code=0" >> "$GITHUB_OUTPUT"
+          else
+            echo "exit_code=1" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Run Trivy vulnerability scanner on ${{ matrix.image }}
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          version: v0.73.0
+          image-ref: ${{ matrix.image }}
+          format: table
+          scanners: vuln
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          exit-code: ${{ steps.risk.outputs.exit_code }}
+
+  # Same scan, for services built locally from a Dockerfile (image-ref) - built once per
+  # service here, then scanned like any other image. See caddy/Dockerfile and
+  # caddy/README.md for why caddy specifically needs this (the Cloudflare DNS-01 ACME
+  # plugin isn't in the official caddy:*-alpine image).
+  trivy-scan-build:
+    needs: trivy-matrix
+    if: needs.trivy-matrix.outputs.build_services != '[]'
+    runs-on: self-hosted
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        service: ${{ fromJson(needs.trivy-matrix.outputs.build_services) }}
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - name: Build ${{ matrix.service }}
+        # Needs a .env (same stand-in as trivy-matrix/compose-validate): "docker compose
+        # build" still fully parses docker-compose.yml, including unrelated services'
+        # ${DOMAIN} interpolations (e.g. langfuse-web's extra_hosts) - an empty DOMAIN makes
+        # Compose reject the whole file with "bad host name ''" before the build even starts.
+        # Left in place (not cleaned up) for the next step, which parses the same file again.
+        run: |
+          cp .env.example .env
+          mkdir -p litellm
+          touch litellm/litellm.env
+          docker compose build ${{ matrix.service }}
+      - name: Resolve local image ref for ${{ matrix.service }}
+        id: ref
+        run: echo "image=$(docker compose config --images ${{ matrix.service }})" >> "$GITHUB_OUTPUT"
+      # See .github/trivy-accepted-risk.txt (same mechanism as trivy-scan above).
+      - name: Check for a tracked, accepted-risk exception
+        id: risk
+        run: |
+          if grep -qxF "${{ steps.ref.outputs.image }}" .github/trivy-accepted-risk.txt; then
+            echo "exit_code=0" >> "$GITHUB_OUTPUT"
+          else
+            echo "exit_code=1" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Run Trivy vulnerability scanner on ${{ matrix.service }}
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          version: v0.73.0
+          image-ref: ${{ steps.ref.outputs.image }}
+          format: table
+          scanners: vuln
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          exit-code: ${{ steps.risk.outputs.exit_code }}

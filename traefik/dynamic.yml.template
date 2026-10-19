@@ -1,0 +1,140 @@
+# ==============================================================================
+# Traefik v3 - Dynamic Configuration Template (Middlewares & Routers)
+# Hydrated by traefik/scripts/hydrate_traefik.py
+# ==============================================================================
+
+tls:
+  certificates:
+    - certFile: "/etc/traefik/certs/tls.crt"
+      keyFile: "/etc/traefik/certs/tls.key"
+
+http:
+  serversTransports:
+    vault-transport:
+      serverName: "vault"
+      rootCAs:
+        - "/etc/traefik/certs/tls.crt"
+
+  middlewares:
+    authentik-auth:
+      forwardAuth:
+        address: "http://authentik-server:9000/outpost.goauthentik.io/auth/traefik"
+        trustForwardHeader: true
+        authResponseHeaders:
+          - "X-Authentik-Username"
+          - "X-Authentik-Groups"
+          - "X-Authentik-Entitlements"
+          - "X-Authentik-Email"
+          - "X-Authentik-Name"
+          - "X-Authentik-Uid"
+          - "X-Authentik-Jwt"
+          - "X-Authentik-Meta-Jwks"
+          - "X-Authentik-Meta-Outpost"
+          - "X-Authentik-Meta-Provider"
+          - "X-Authentik-Meta-App"
+          - "X-Authentik-Meta-Version"
+
+    litellm-docs-redirect:
+      redirectRegex:
+        regex: "^https?://litellm\\.${DOMAIN}/($|docs|openapi\\.json|swagger|redoc).*"
+        replacement: "https://litellm.${DOMAIN}/ui/"
+        permanent: false
+
+    root-redirect-middleware:
+      redirectRegex:
+        regex: ".*"
+        replacement: "https://authentik.${DOMAIN}/if/user/"
+        permanent: false
+
+    security-headers:
+      headers:
+        sslProxyHeaders:
+          X-Forwarded-Proto: "https"
+        stsSeconds: 63072000
+        stsIncludeSubdomains: true
+        contentTypeNosniff: true
+        browserXssFilter: true
+        customFrameOptionsValue: "SAMEORIGIN"
+        referrerPolicy: "strict-origin-when-cross-origin"
+
+  services:
+    noop-service:
+      loadBalancer:
+        servers:
+          - url: "http://authentik-server:9000"
+
+  routers:
+    root-redirect:
+      rule: "Host(`${DOMAIN}`) || Host(`home.${DOMAIN}`)"
+      entryPoints:
+        - "websecure"
+      service: "noop-service"
+      tls: ___TRAEFIK_TLS_OPTIONS___
+      middlewares:
+        - "root-redirect-middleware"
+
+    root-redirect-http:
+      rule: "Host(`${DOMAIN}`) || Host(`home.${DOMAIN}`)"
+      entryPoints:
+        - "web"
+      service: "noop-service"
+      middlewares:
+        - "root-redirect-middleware"
+
+    traefik-dashboard:
+      rule: "Host(`traefik.${DOMAIN}`)"
+      entryPoints:
+        - "websecure"
+      service: "api@internal"
+      tls: ___TRAEFIK_TLS_OPTIONS___
+      middlewares:
+        - "authentik-auth"
+
+    traefik-dashboard-http:
+      rule: "Host(`traefik.${DOMAIN}`)"
+      entryPoints:
+        - "web"
+      service: "api@internal"
+      middlewares:
+        - "authentik-auth"
+
+    # Vault public metadata shielding (Finding F4)
+    vault-block-meta:
+      rule: "Host(`vault.${DOMAIN}`) && (PathPrefix(`/v1/sys/health`) || PathPrefix(`/v1/sys/leader`))"
+      priority: 100
+      entryPoints:
+        - "websecure"
+      service: "noop-service"
+      tls: ___TRAEFIK_TLS_OPTIONS___
+      middlewares:
+        - "root-redirect-middleware"
+
+    vault-block-meta-http:
+      rule: "Host(`vault.${DOMAIN}`) && (PathPrefix(`/v1/sys/health`) || PathPrefix(`/v1/sys/leader`))"
+      priority: 100
+      entryPoints:
+        - "web"
+      service: "noop-service"
+      middlewares:
+        - "root-redirect-middleware"
+
+    # CHouse UI public health shielding (Finding F1)
+    clickhouse-block-health:
+      rule: "Host(`clickhouse.${DOMAIN}`) && PathPrefix(`/api/health`)"
+      priority: 100
+      entryPoints:
+        - "websecure"
+      service: "noop-service"
+      tls: ___TRAEFIK_TLS_OPTIONS___
+      middlewares:
+        - "root-redirect-middleware"
+
+    clickhouse-block-health-http:
+      rule: "Host(`clickhouse.${DOMAIN}`) && PathPrefix(`/api/health`)"
+      priority: 100
+      entryPoints:
+        - "web"
+      service: "noop-service"
+      middlewares:
+        - "root-redirect-middleware"
+

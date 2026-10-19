@@ -1,0 +1,72 @@
+graph LR
+  linkStyle default fill:#ffffff
+
+  subgraph diagram ["Container View: LLM Stack"]
+    style diagram fill:#ffffff,stroke:#ffffff
+
+    1["<div style='font-weight: bold'>Client / Engineer</div><div style='font-size: 70%; margin-top: 0px'>[Person]</div><div style='font-size: 80%; margin-top:10px'>Interacts with chat<br />interfaces, APIs, and<br />administrative dashboards.</div>"]
+    style 1 fill:#08427b,stroke:#052e56,color:#ffffff
+
+    subgraph 2 ["LLM Stack"]
+      style 2 fill:#ffffff,stroke:#0b4884,color:#0b4884
+
+      10[("<div style='font-weight: bold'>PostgreSQL Database</div><div style='font-size: 70%; margin-top: 0px'>[Container: PostgreSQL 18.6]</div><div style='font-size: 80%; margin-top:10px'>Relational storage on<br />air-gapped internal-backend<br />network.</div>")]
+      style 10 fill:#2a6496,stroke:#1d4669,color:#ffffff
+      11[("<div style='font-weight: bold'>ClickHouse Database</div><div style='font-size: 70%; margin-top: 0px'>[Container: ClickHouse 26.7]</div><div style='font-size: 80%; margin-top:10px'>Columnar analytics engine on<br />air-gapped internal-backend<br />network.</div>")]
+      style 11 fill:#2a6496,stroke:#1d4669,color:#ffffff
+      12[("<div style='font-weight: bold'>Redis Cache</div><div style='font-size: 70%; margin-top: 0px'>[Container: Redis 8.10]</div><div style='font-size: 80%; margin-top:10px'>In-memory queue and encrypted<br />token store on air-gapped<br />internal-backend.</div>")]
+      style 12 fill:#2a6496,stroke:#1d4669,color:#ffffff
+      13[("<div style='font-weight: bold'>SeaweedFS S3 Storage</div><div style='font-size: 70%; margin-top: 0px'>[Container: SeaweedFS 4.48]</div><div style='font-size: 80%; margin-top:10px'>S3 object storage for<br />prompts, exports, and<br />document chunks.</div>")]
+      style 13 fill:#2a6496,stroke:#1d4669,color:#ffffff
+      14[("<div style='font-weight: bold'>Qdrant Vector Database</div><div style='font-size: 70%; margin-top: 0px'>[Container: Qdrant v1.19]</div><div style='font-size: 80%; margin-top:10px'>Vector index and semantic<br />similarity search for RAG.</div>")]
+      style 14 fill:#2a6496,stroke:#1d4669,color:#ffffff
+      15["<div style='font-weight: bold'>Ollama Inference Engine</div><div style='font-size: 70%; margin-top: 0px'>[Container: Ollama 0.40]</div><div style='font-size: 80%; margin-top:10px'>Bundled local CPU/GPU model<br />runtime (lfm2-1.2b-rag).</div>"]
+      style 15 fill:#438dd5,stroke:#2e6295,color:#ffffff
+      16["<div style='font-weight: bold'>Langfuse Observability</div><div style='font-size: 70%; margin-top: 0px'>[Container: Next.js / Node]</div><div style='font-size: 80%; margin-top:10px'>LLMOps tracing, prompt<br />evaluation, and telemetry.</div>"]
+      style 16 fill:#505050,stroke:#383838,color:#ffffff
+      17["<div style='font-weight: bold'>Prometheus Server</div><div style='font-size: 70%; margin-top: 0px'>[Container: Prometheus v3.15]</div><div style='font-size: 80%; margin-top:10px'>Multi-dimensional metrics<br />scraper and time-series<br />store.</div>"]
+      style 17 fill:#505050,stroke:#383838,color:#ffffff
+      18["<div style='font-weight: bold'>Grafana Dashboards</div><div style='font-size: 70%; margin-top: 0px'>[Container: Grafana 13.2]</div><div style='font-size: 80%; margin-top:10px'>Unified observability and<br />monitoring visualization.</div>"]
+      style 18 fill:#505050,stroke:#383838,color:#ffffff
+      19["<div style='font-weight: bold'>Grafana Loki</div><div style='font-size: 70%; margin-top: 0px'>[Container: Loki 3.7]</div><div style='font-size: 80%; margin-top:10px'>Centralized log aggregation<br />engine.</div>"]
+      style 19 fill:#505050,stroke:#383838,color:#ffffff
+      3["<div style='font-weight: bold'>Traefik Ingress</div><div style='font-size: 70%; margin-top: 0px'>[Container: Traefik v3]</div><div style='font-size: 80%; margin-top:10px'>Reverse proxy, TLS<br />termination, and Forward-Auth<br />middleware dispatcher.</div>"]
+      style 3 fill:#438dd5,stroke:#2e6295,color:#ffffff
+      4["<div style='font-weight: bold'>Cloudflare Tunnel Daemon</div><div style='font-size: 70%; margin-top: 0px'>[Container: cloudflared]</div><div style='font-size: 80%; margin-top:10px'>Outbound Zero Trust tunnel<br />terminating edge traffic.</div>"]
+      style 4 fill:#438dd5,stroke:#2e6295,color:#ffffff
+      5["<div style='font-weight: bold'>Authentik IdP</div><div style='font-size: 70%; margin-top: 0px'>[Container: Authentik 2026.8]</div><div style='font-size: 80%; margin-top:10px'>Single Source of Truth for<br />identity, OIDC provider, and<br />Forward-Auth.</div>"]
+      style 5 fill:#438dd5,stroke:#2e6295,color:#ffffff
+      6["<div style='font-weight: bold'>HashiCorp Vault</div><div style='font-size: 70%; margin-top: 0px'>[Container: Vault 2.2.0]</div><div style='font-size: 80%; margin-top:10px'>Secrets lifecycle engine, KV<br />v2 encrypted storage, and<br />AppRole token provider.</div>"]
+      style 6 fill:#a02040,stroke:#70162c,color:#ffffff
+      7["<div style='font-weight: bold'>Open WebUI</div><div style='font-size: 70%; margin-top: 0px'>[Container: Python / Svelte]</div><div style='font-size: 80%; margin-top:10px'>Chat, Knowledge RAG<br />interface, and model<br />playground.</div>"]
+      style 7 fill:#438dd5,stroke:#2e6295,color:#ffffff
+      8["<div style='font-weight: bold'>LiteLLM Gateway</div><div style='font-size: 70%; margin-top: 0px'>[Container: LiteLLM v1.105]</div><div style='font-size: 80%; margin-top:10px'>Unified OpenAI-compatible<br />proxy, load balancing, and<br />spend tracking.</div>"]
+      style 8 fill:#207a7a,stroke:#165555,color:#ffffff
+      9["<div style='font-weight: bold'>Betterleaks + Presidio</div><div style='font-size: 70%; margin-top: 0px'>[Container: Python / Go]</div><div style='font-size: 80%; margin-top:10px'>Bidirectional secret<br />detection, PII redaction, and<br />reversible tokenization.</div>"]
+      style 9 fill:#a02040,stroke:#70162c,color:#ffffff
+    end
+
+    1-. "<div>Accesses web interfaces and<br />APIs via HTTPS</div><div style='font-size: 70%'></div>" .->4
+    4-. "<div>Forwards unencrypted tunnel<br />traffic internally</div><div style='font-size: 70%'></div>" .->3
+    3-. "<div>Verifies identity via<br />Forward-Auth middleware</div><div style='font-size: 70%'></div>" .->5
+    3-. "<div>Routes chat UI traffic</div><div style='font-size: 70%'></div>" .->7
+    3-. "<div>Routes API completion traffic</div><div style='font-size: 70%'></div>" .->8
+    3-. "<div>Routes monitoring dashboard<br />traffic</div><div style='font-size: 70%'></div>" .->18
+    3-. "<div>Routes LLMOps UI traffic</div><div style='font-size: 70%'></div>" .->16
+    7-. "<div>Sends inference requests</div><div style='font-size: 70%'></div>" .->8
+    7-. "<div>Retrieves vector context<br />(RAG)</div><div style='font-size: 70%'></div>" .->14
+    7-. "<div>Inspects chat streams for PII<br />leaks</div><div style='font-size: 70%'></div>" .->9
+    8-. "<div>Dispatches local model<br />execution</div><div style='font-size: 70%'></div>" .->15
+    8-. "<div>Stores API keys and spend<br />logs</div><div style='font-size: 70%'></div>" .->10
+    8-. "<div>Ships tracing spans and<br />tokens</div><div style='font-size: 70%'></div>" .->16
+    8-. "<div>Applies Presidio guardrail<br />callback</div><div style='font-size: 70%'></div>" .->9
+    9-. "<div>Persists AES-256-GCM<br />encrypted token mappings</div><div style='font-size: 70%'></div>" .->12
+    16-. "<div>Stores projects and users</div><div style='font-size: 70%'></div>" .->10
+    16-. "<div>Stores high-throughput<br />telemetry traces</div><div style='font-size: 70%'></div>" .->11
+    16-. "<div>Stores dataset exports (SigV4<br />scoped IAM)</div><div style='font-size: 70%'></div>" .->13
+    17-. "<div>Scrapes /metrics endpoint</div><div style='font-size: 70%'></div>" .->8
+    17-. "<div>Scrapes router metrics<br />(:8082)</div><div style='font-size: 70%'></div>" .->3
+    18-. "<div>Queries metrics time series</div><div style='font-size: 70%'></div>" .->17
+    18-. "<div>Queries log streams</div><div style='font-size: 70%'></div>" .->19
+
+  end

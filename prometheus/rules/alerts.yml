@@ -1,0 +1,201 @@
+# ==============================================================================
+# Prometheus Alerting Rules — llm-stack
+# Declarative, production-ready alert definitions categorized by subsystem.
+# ==============================================================================
+
+groups:
+  # ----------------------------------------------------------------------------
+  # 1. Core Infrastructure & Host Health
+  # ----------------------------------------------------------------------------
+  - name: stack_infrastructure
+    rules:
+      - alert: ServiceDown
+        expr: up == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Service {{ $labels.job }} is unreachable"
+          description: "Target {{ $labels.instance }} of job {{ $labels.job }} has been DOWN for more than 1 minute."
+
+      - alert: ContainerCrashLooping
+        expr: rate(container_start_time_seconds{name!=""}[5m]) > 0.01
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Container {{ $labels.name }} is crash looping"
+          description: "Container {{ $labels.name }} restarted multiple times within the last 5 minutes."
+
+      - alert: ContainerHighMemoryWorkingSet
+        expr: (container_memory_working_set_bytes{name!=""} / container_spec_memory_limit_bytes{name!=""}) > 0.90
+        for: 3m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Container {{ $labels.name }} memory saturation (>90%)"
+          description: "Container {{ $labels.name }} active working set memory is at {{ $value | humanizePercentage }} of its limit."
+
+      - alert: LangfuseIngestionProbeFailed
+        expr: llm_stack_langfuse_ingestion_probe_success{job="node-exporter"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Langfuse ingestion failed across S3 or ClickHouse"
+          description: "The synthetic Langfuse ingestion round trip did not complete. Check Langfuse, SeaweedFS, and ClickHouse."
+
+      - alert: LangfuseIngestionProbeStale
+        expr: time() - llm_stack_langfuse_ingestion_probe_timestamp_seconds{job="node-exporter"} > 900
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Langfuse ingestion monitor has stopped running"
+          description: "The last completed ingestion probe is more than 15 minutes old. Check the systemd user timer and metric file."
+
+      - alert: HostDiskFillingUp
+        expr: (node_filesystem_avail_bytes{mountpoint="/"} / node_filesystem_size_bytes{mountpoint="/"}) < 0.15
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Host root partition is low on disk space (<15%)"
+          description: "Root partition free space is down to {{ $value | humanizePercentage }}."
+
+      - alert: HostHighCPU
+        expr: 100 - (avg by (instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 90
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Host CPU utilization is sustained above 90%"
+          description: "Host CPU has been under heavy load ({{ $value | humanize }}%) for more than 10 minutes."
+
+  # ----------------------------------------------------------------------------
+  # 2. LLM Inference & Remote GPU Backend (llama-server)
+  # ----------------------------------------------------------------------------
+  - name: llm_inference_backend
+    rules:
+      - alert: LlamaServerOffline
+        expr: up{job="llama-server"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "llama-server backend is offline"
+          description: "Inference engine on {{ $labels.instance }} is unreachable. LLM queries will fail."
+
+      - alert: LlamaServerQueueOverflow
+        expr: llamacpp:requests_deferred > 0
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "llama-server requests are being queued"
+          description: "All inference slots are currently busy; incoming LLM requests are queued."
+
+  # ----------------------------------------------------------------------------
+  # 3. LLM Gateway, Routing & Budgets (LiteLLM)
+  # ----------------------------------------------------------------------------
+  - name: llm_gateway
+    rules:
+      - alert: LiteLLMHighErrorRate
+        expr: sum(rate(litellm_proxy_failed_requests_metric_total[5m])) / (sum(rate(litellm_proxy_total_requests_metric_total[5m])) + 0.001) > 0.10
+        for: 3m
+        labels:
+          severity: warning
+        annotations:
+          summary: "LiteLLM failure rate exceeds 10%"
+          description: "LiteLLM failed request rate is {{ $value | humanizePercentage }} over the last 5 minutes."
+
+      - alert: LiteLLMBudgetDepleted
+        expr: litellm_remaining_api_key_budget_metric <= 0
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "LiteLLM API key budget is exhausted"
+          description: "API key {{ $labels.hashed_api_key }} has depleted its allocated spend/token budget."
+
+  # ----------------------------------------------------------------------------
+  # 4. Ingress, Proxy & Routing (Traefik)
+  # ----------------------------------------------------------------------------
+  - name: ingress_and_routing
+    rules:
+      - alert: TraefikHigh5xxErrorRate
+        expr: sum(rate(traefik_entrypoint_requests_total{code=~"5.*"}[5m])) / (sum(rate(traefik_entrypoint_requests_total[5m])) + 0.001) > 0.05
+        for: 3m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Traefik elevated 5xx error rate (>5%)"
+          description: "Traefik returned {{ $value | humanizePercentage }} 5xx errors across entrypoints."
+
+  # ----------------------------------------------------------------------------
+  # 5. Security, Identity & SSO (Authentik)
+  # ----------------------------------------------------------------------------
+  - name: security_and_identity
+    rules:
+      - alert: AuthentikOutpostDisconnected
+        expr: authentik_outposts_connected == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Authentik Forward-Auth Outpost is disconnected"
+          description: "No active Authentik outpost is connected; all protected reverse-proxy routes are blocked."
+
+      - alert: AuthentikWorkerDown
+        expr: authentik_admin_workers == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Authentik background worker is down"
+          description: "Zero active Authentik workers detected. Async tasks and event logging are suspended."
+
+      - alert: AuthentikBruteForceAttempt
+        expr: sum(rate(django_http_responses_total_by_status_total{status=~"40[13]"}[2m])) > 5
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Spike in Authentik authentication failures (possible brute force)"
+          description: "Authentik is rejecting >5 auth attempts per second (current: {{ $value | humanize }} req/s)."
+
+  # ----------------------------------------------------------------------------
+  # 6. Vector Database & Storage (Qdrant)
+  # ----------------------------------------------------------------------------
+  - name: vector_storage
+    rules:
+      - alert: QdrantOffline
+        expr: up{job="qdrant"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Qdrant Vector Database is down"
+          description: "Qdrant endpoint is unreachable. RAG embeddings and semantic searches will fail."
+
+  # ----------------------------------------------------------------------------
+  # 7. Betterleaks Security & Secret Guard
+  # ----------------------------------------------------------------------------
+  - name: betterleaks_security
+    rules:
+      - alert: BetterleaksServiceDown
+        expr: up{job="betterleaks"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Betterleaks Secret & PII Redactor is down"
+          description: "Betterleaks microservice is unreachable; prompt and output sanitization may fail-open or degrade."
+
+      - alert: CriticalSecretLeakDetected
+        expr: increase(betterleaks_findings_total{entity_type=~"VAULT_TOKEN|GITHUB_PAT|AWS_ACCESS_KEY|PRIVATE_KEY"}[2m]) > 0
+        labels:
+          severity: warning
+        annotations:
+          summary: "Critical secret leak attempt intercepted by Betterleaks"
+          description: "Betterleaks intercepted a sensitive credential ({{ $labels.entity_type }}) via {{ $labels.recognizer_name }}."
