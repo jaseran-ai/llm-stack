@@ -8,16 +8,22 @@ updates:
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 10
+    # Wait a week before proposing a newly published version, so a compromised release has
+    # time to be detected and pulled upstream before it reaches this repository.
+    cooldown:
+      default-days: 7
     labels:
       - "dependencies"
       - "docker"
 
-
-  # GitHub Actions versions used in .github/workflows/ci.yml (e.g. actions/checkout).
+  # GitHub Actions used in .github/workflows/ (pinned by commit SHA; Dependabot updates the SHA
+  # and its version comment together).
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
       interval: "weekly"
+    cooldown:
+      default-days: 7
     labels:
       - "dependencies"
       - "github-actions"

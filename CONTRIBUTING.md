@@ -45,8 +45,9 @@ Thread Pinning" section) and no bounded timeout would reliably prevent a stuck r
 CI minutes for hours. `smoke_test.sh` is meant to be run manually against a real deployment, as
 shown above.
 
-The vanilla self-hosted runner topology and the host-path contract required by container jobs
-are documented in [`runner/README.md`](runner/README.md).
+CI runs on GitHub-hosted runners only (`ubuntu-24.04`); every tool comes from a digest-pinned image
+declared in the `Makefile`. Changes reach `main` through pull requests that pass every CI check
+(see the ruleset in [`.github/rulesets/main.json`](.github/rulesets/main.json)).
 
 You can run the same checks locally before pushing:
 
@@ -57,6 +58,7 @@ make yamllint
 make markdown-links
 make no-french
 make compose-validate
+make actions-security  # actionlint + zizmor security audit of .github/ (set GH_TOKEN for online audits)
 make trivy          # not part of "make lint" (pulls & scans every image, much slower);
                      # requires the trivy CLI: https://aquasecurity.github.io/trivy/latest/getting-started/installation/
 ```

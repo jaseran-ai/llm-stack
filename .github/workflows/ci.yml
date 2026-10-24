@@ -5,77 +5,141 @@ on:
     branches: [main]
   pull_request:
 
+# No token permissions by default; each job requests only what it needs.
+permissions: {}
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Run every tool from the pinned images declared in the Makefile, never from the runner image.
+  USE_CONTAINERS: "1"
+
 jobs:
   script-unit-tests:
-    runs-on: self-hosted
+    name: Script unit tests
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
     container:
       image: python:3.14.7-bookworm@sha256:ecac9e212daacda8a702eae372fceebc0ee36f5805abe087880367e8d061fa5b
-    timeout-minutes: 5
+    env:
+      # Already inside the pinned Python image (no Docker daemon in a job container).
+      USE_CONTAINERS: "0"
+    timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install hash-pinned test dependencies
+        run: python3 -m pip install --no-cache-dir --require-hashes -r .github/requirements-tests.txt
       - name: Run script and startup graph unit tests
         run: make script-tests
 
   docker-compose-validate:
-    runs-on: self-hosted
-    timeout-minutes: 5
+    name: Compose validation
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          fetch-depth: 0
+          persist-credentials: false
       - name: Validate docker-compose.yml
         run: make compose-validate
 
   terraform-validate:
-    runs-on: self-hosted
-    timeout-minutes: 5
+    name: Terraform validation
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          fetch-depth: 0
+          persist-credentials: false
       - name: Validate Cloudflare Terraform
         run: make terraform-validate
 
   shellcheck:
-    runs-on: self-hosted
+    name: ShellCheck
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - name: Run shellcheck
         run: make shellcheck
 
   yaml-lint:
-    runs-on: self-hosted
+    name: YAML lint
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - name: Run yamllint
         run: make yamllint
 
   markdown-links:
-    runs-on: self-hosted
+    name: Markdown links
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - name: Check markdown links
         run: make markdown-links
 
   no-french-regression:
-    runs-on: self-hosted
+    name: No French regression
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          fetch-depth: 0
+          persist-credentials: false
       - name: Check for French text
         run: make no-french
 
   gitleaks:
-    runs-on: self-hosted
+    name: Gitleaks secret scan
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          fetch-depth: 0
+          persist-credentials: false
       - name: Run Gitleaks secret scan
         run: make gitleaks
+
+  actions-security:
+    name: GitHub Actions security
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Audit workflows with actionlint and zizmor
+        env:
+          # Read-only job token: enables zizmor's online audits (known-vulnerable actions).
+          GH_TOKEN: ${{ github.token }}
+        run: make actions-security

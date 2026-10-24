@@ -46,11 +46,12 @@ This document defines the authoritative, binding rules and governance for all AI
     - ALWAYS formally verify the exact, released version tag and syntax in official documentation or repository releases (via web search or API tools) BEFORE writing or modifying any configuration/workflow file.
     - Proactively research and identify edge cases (e.g. reverse-proxy path rewrites, WebSocket origin checks, trailing slashes in OIDC discovery, forward-auth header mappings, CORS, health check probes) to eliminate runtime surprises.
 
-11. **Vanilla Runners & Pure Containerized CI (Rule 11)**:
-    - CI runners MUST remain 100% vanilla, standard, and unpolluted (`myoung34/github-runner:latest`).
-    - NEVER install ad-hoc tools, CLI binaries, or packages (`apt-get`, `pip`, curl-to-bin) into the runner image or host.
-    - All CI jobs, linters, validators, and scanners MUST run inside isolated, versioned Docker containers declared with `container: <image>:<tag>` in workflow YAML files.
-    - Local Makefiles must use container fallbacks (`docker run`) so developer workstations require zero extra tool installations.
+11. **GitHub-Hosted Runners & Hardened, Containerized CI (Rule 11)**:
+    - The repository is public: CI MUST run on GitHub-hosted runners pinned to an explicit image (`runs-on: ubuntu-24.04`, never `ubuntu-latest`). Self-hosted runners are FORBIDDEN, since any fork pull request could execute code on them.
+    - NEVER install ad-hoc tools, CLI binaries, or packages into the runner; the only exception is hash-pinned test dependencies (`pip install --require-hashes`).
+    - Linters, validators, and scanners run from version- and digest-pinned images through the Makefile (`USE_CONTAINERS=1` in CI) or a pinned `container:` image; local Makefile targets keep `docker run` fallbacks so workstations need no extra tools.
+    - Workflows MUST pass `make actions-security` (actionlint + zizmor): actions pinned to full commit SHAs, `permissions: {}` at workflow level with least privilege per job, `persist-credentials: false` on checkout, no `${{ }}` expressions inside `run:` scripts (pass them through `env:`), no `pull_request_target`.
+    - The `main` branch is protected by `.github/rulesets/main.json` (applied with `make github-harden`): pull requests and all CI checks required, no force push or deletion. Keep its required checks equal to the CI job names.
 
 ---
 

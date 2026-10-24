@@ -10,6 +10,14 @@ on:
   # Allows manual on-demand triggering from GitHub Actions or GitHub CLI.
   workflow_dispatch:
 
+# No token permissions by default; each job requests only what it needs.
+permissions: {}
+
+# One full scan at a time; a newer manual or scheduled run supersedes a queued one.
+concurrency:
+  group: security-scan
+  cancel-in-progress: true
+
 jobs:
   # Computes two image matrices from docker-compose.yml (via "docker compose config", the
   # same technique make trivy/compose-validate use), rather than a hardcoded list in this
@@ -21,13 +29,18 @@ jobs:
   # stand-in, same as the docker-compose-validate job: only the image list is needed, no real
   # secrets.
   trivy-matrix:
-    runs-on: self-hosted
+    name: Trivy image matrix
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
     timeout-minutes: 10
     outputs:
       images: ${{ steps.list.outputs.images }}
       build_services: ${{ steps.list.outputs.build_services }}
     steps:
-      - uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - id: list
         run: |
           cp .env.example .env
@@ -53,29 +66,36 @@ jobs:
   # actually have a fix available upstream - the project cannot act on a CVE with no patched
   # version yet, so failing CI on those would be pure noise.
   trivy-scan:
+    name: Trivy scan (registry images)
     needs: trivy-matrix
-    runs-on: self-hosted
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
     timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
         image: ${{ fromJson(needs.trivy-matrix.outputs.images) }}
     steps:
-      - uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       # See .github/trivy-accepted-risk.txt: a short, individually-reviewed list of images
       # already at the latest available upstream tag/digest, with residual CVEs confirmed
       # unfixable from this project's side. The scan below still runs and reports findings
       # for these either way - this only decides whether the job fails the build over them.
       - name: Check for a tracked, accepted-risk exception
         id: risk
+        env:
+          IMAGE: ${{ matrix.image }}
         run: |
-          if grep -qxF "${{ matrix.image }}" .github/trivy-accepted-risk.txt; then
+          if grep -qxF "$IMAGE" .github/trivy-accepted-risk.txt; then
             echo "exit_code=0" >> "$GITHUB_OUTPUT"
           else
             echo "exit_code=1" >> "$GITHUB_OUTPUT"
           fi
       - name: Run Trivy vulnerability scanner on ${{ matrix.image }}
-        uses: aquasecurity/trivy-action@v0.36.0
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           version: v0.73.0
           image-ref: ${{ matrix.image }}
@@ -88,41 +108,52 @@ jobs:
   # Same scan, for services built locally from a Dockerfile (image-ref) - built once per
   # service here, then scanned like any other image.
   trivy-scan-build:
+    name: Trivy scan (built images)
     needs: trivy-matrix
     if: needs.trivy-matrix.outputs.build_services != '[]'
-    runs-on: self-hosted
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
     timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
         service: ${{ fromJson(needs.trivy-matrix.outputs.build_services) }}
     steps:
-      - uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - name: Build ${{ matrix.service }}
         # Needs a .env (same stand-in as trivy-matrix/compose-validate): "docker compose
         # build" still fully parses docker-compose.yml, including unrelated services'
         # ${DOMAIN} interpolations (e.g. langfuse-web's extra_hosts) - an empty DOMAIN makes
         # Compose reject the whole file with "bad host name ''" before the build even starts.
         # Left in place (not cleaned up) for the next step, which parses the same file again.
+        env:
+          SERVICE: ${{ matrix.service }}
         run: |
           cp .env.example .env
           mkdir -p litellm
           touch litellm/litellm.env
-          docker compose build ${{ matrix.service }}
+          docker compose build "$SERVICE"
       - name: Resolve local image ref for ${{ matrix.service }}
         id: ref
-        run: echo "image=$(docker compose config --images ${{ matrix.service }})" >> "$GITHUB_OUTPUT"
+        env:
+          SERVICE: ${{ matrix.service }}
+        run: echo "image=$(docker compose config --images "$SERVICE")" >> "$GITHUB_OUTPUT"
       # See .github/trivy-accepted-risk.txt (same mechanism as trivy-scan above).
       - name: Check for a tracked, accepted-risk exception
         id: risk
+        env:
+          IMAGE: ${{ steps.ref.outputs.image }}
         run: |
-          if grep -qxF "${{ steps.ref.outputs.image }}" .github/trivy-accepted-risk.txt; then
+          if grep -qxF "$IMAGE" .github/trivy-accepted-risk.txt; then
             echo "exit_code=0" >> "$GITHUB_OUTPUT"
           else
             echo "exit_code=1" >> "$GITHUB_OUTPUT"
           fi
       - name: Run Trivy vulnerability scanner on ${{ matrix.service }}
-        uses: aquasecurity/trivy-action@v0.36.0
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           version: v0.73.0
           image-ref: ${{ steps.ref.outputs.image }}

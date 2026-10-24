@@ -7,6 +7,19 @@ YAMLLINT := $(shell command -v yamllint 2>/dev/null || echo "python3 -m yamllint
 PYTHON_TEST_IMAGE := python:3.14.7-bookworm@sha256:ecac9e212daacda8a702eae372fceebc0ee36f5805abe087880367e8d061fa5b
 YAMLLINT_IMAGE := cytopia/yamllint:1@sha256:596fb19eb71e55ba5b2fa56d8c18a615ec82adc8d3bf2d73918cb78c8f3240fb
 TRIVY_IMAGE := aquasec/trivy:0.72.0@sha256:cffe3f5161a47a6823fbd23d985795b3ed72a4c806da4c4df16266c02accdd6f
+SHELLCHECK_IMAGE := koalaman/shellcheck:v0.11.0@sha256:61862eba1fcf09a484ebcc6feea46f1782532571a34ed51fedf90dd25f925a8d
+GITLEAKS_IMAGE := zricethezav/gitleaks:v8.30.1@sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f
+TERRAFORM_IMAGE := hashicorp/terraform:1.10.5@sha256:679ac5e095bf550bc726742cd12efa6050f0913080df479fdabfeb202953af28
+ZIZMOR_IMAGE := ghcr.io/zizmorcore/zizmor:1.31.1@sha256:42d409dbb851d4c5d35a058cf042b828bea1e3f2884378c526eb0974780e18d9
+ACTIONLINT_IMAGE := rhysd/actionlint:1.7.12@sha256:b1934ee5f1c509618f2508e6eb47ee0d3520686341fec936f3b79331f9315667
+
+# Run the pinned Python image as the invoking user: git accepts the mounted checkout
+# ("dubious ownership" otherwise) and no root-owned files (e.g. __pycache__) are left behind.
+PYTHON_RUN := docker run --rm --user "$$(id -u):$$(id -g)" -e HOME=/tmp -v "$$(pwd):/data" -w /data $(PYTHON_TEST_IMAGE)
+
+# USE_CONTAINERS=1 ignores locally installed tools and always runs the pinned images above.
+# CI sets it so results never depend on what a runner image happens to ship.
+USE_CONTAINERS ?= 0
 
 .PHONY: help
 help: ## Show this help
@@ -16,25 +29,38 @@ help: ## Show this help
 ## --- Checks (mirrors .github/workflows/ci.yml) -----------------------------
 
 .PHONY: lint
-lint: shellcheck yamllint markdown-links no-french compose-validate script-tests gitleaks terraform-validate ## Run every CI check locally (same as .github/workflows/ci.yml)
+lint: shellcheck yamllint markdown-links no-french compose-validate script-tests gitleaks terraform-validate actions-security ## Run every CI check locally (same as .github/workflows/ci.yml)
 	@echo "All checks passed."
 
 .PHONY: terraform-validate
 terraform-validate: ## Validate Cloudflare Terraform files
-	@if command -v terraform >/dev/null 2>&1; then \
+	@if [ "$(USE_CONTAINERS)" != "1" ] && command -v terraform >/dev/null 2>&1; then \
 		(cd cloudflare && terraform init -backend=false -input=false >/dev/null && terraform validate); \
 	else \
-		docker run --rm -v "$$(pwd)/cloudflare:/data" -w /data hashicorp/terraform:1.10 init -backend=false -input=false >/dev/null && \
-		docker run --rm -v "$$(pwd)/cloudflare:/data" -w /data hashicorp/terraform:1.10 validate; \
+		docker run --rm --user "$$(id -u):$$(id -g)" -e HOME=/tmp -v "$$(pwd)/cloudflare:/data" -w /data $(TERRAFORM_IMAGE) init -backend=false -input=false >/dev/null && \
+		docker run --rm --user "$$(id -u):$$(id -g)" -e HOME=/tmp -v "$$(pwd)/cloudflare:/data" -w /data $(TERRAFORM_IMAGE) validate; \
 	fi
 
 .PHONY: gitleaks
 gitleaks: ## Scan repository for hardcoded secrets using Gitleaks (Docker-native)
-	@if command -v gitleaks >/dev/null 2>&1; then \
+	@if [ "$(USE_CONTAINERS)" != "1" ] && command -v gitleaks >/dev/null 2>&1; then \
 		gitleaks detect --source=. --config=.gitleaks.toml --no-git --redact --verbose; \
 	else \
-		docker run --rm -v "$$(pwd):/path" -w /path zricethezav/gitleaks:v8.30.1 detect --source=/path --config=/path/.gitleaks.toml --no-git --redact --verbose; \
+		docker run --rm -v "$$(pwd):/path" -w /path $(GITLEAKS_IMAGE) detect --source=/path --config=/path/.gitleaks.toml --no-git --redact --verbose; \
 	fi
+
+.PHONY: actions-security
+actions-security: ## Audit GitHub Actions workflows (zizmor security audit + actionlint)
+	@docker run --rm -v "$$(pwd):/repo:ro" -w /repo $(ACTIONLINT_IMAGE) -no-color
+	@# GH_TOKEN (optional, read-only) enables zizmor's online audits (known-vulnerable
+	@# actions, impostor commits); without it only the offline audits run.
+	@docker run --rm -e GH_TOKEN -v "$$(pwd):/repo:ro" -w /repo $(ZIZMOR_IMAGE) \
+		--format plain $$( [ -n "$${GH_TOKEN:-}" ] || echo --offline ) .github
+	@echo "GitHub Actions workflows: no actionlint or zizmor findings."
+
+.PHONY: github-harden
+github-harden: ## Apply GitHub security settings and the main ruleset (REPO=owner/name, DRY_RUN=1 to preview)
+	@./scripts/github_harden.sh $(if $(filter 1,$(DRY_RUN)),--dry-run,) $(REPO)
 
 .PHONY: install-hooks
 install-hooks: ## Install Git pre-commit hook for automated secret protection
@@ -47,17 +73,17 @@ install-hooks: ## Install Git pre-commit hook for automated secret protection
 
 .PHONY: shellcheck
 shellcheck: ## Lint lifecycle and UAT shell scripts with shellcheck
-	@if command -v shellcheck >/dev/null 2>&1; then \
-		shellcheck setup.sh start.sh stop.sh restart.sh smoke_test.sh scripts/*.sh scripts/tests/*.sh scripts/uat/*.sh */provision.sh; \
+	@if [ "$(USE_CONTAINERS)" != "1" ] && command -v shellcheck >/dev/null 2>&1; then \
+		shellcheck setup.sh start.sh stop.sh restart.sh smoke_test.sh scripts/*.sh scripts/tests/*.sh scripts/uat/*.sh */provision.sh traefik/scripts/*.sh; \
 	else \
-		docker run --rm -v "$$(pwd):/mnt" -w /mnt koalaman/shellcheck:v0.11.0 setup.sh start.sh stop.sh restart.sh smoke_test.sh scripts/*.sh scripts/tests/*.sh scripts/uat/*.sh */provision.sh; \
+		docker run --rm -v "$$(pwd):/mnt" -w /mnt $(SHELLCHECK_IMAGE) setup.sh start.sh stop.sh restart.sh smoke_test.sh scripts/*.sh scripts/tests/*.sh scripts/uat/*.sh */provision.sh traefik/scripts/*.sh; \
 	fi
 
 .PHONY: yamllint
 yamllint: ## Lint every YAML file (see .yamllint for the rule config)
-	@if command -v yamllint >/dev/null 2>&1; then \
+	@if [ "$(USE_CONTAINERS)" != "1" ] && command -v yamllint >/dev/null 2>&1; then \
 		yamllint .; \
-	elif python3 -m yamllint --version >/dev/null 2>&1; then \
+	elif [ "$(USE_CONTAINERS)" != "1" ] && python3 -m yamllint --version >/dev/null 2>&1; then \
 		python3 -m yamllint .; \
 	else \
 		docker run --rm -v "$$(pwd):/data" -w /data $(YAMLLINT_IMAGE) .; \
@@ -65,22 +91,22 @@ yamllint: ## Lint every YAML file (see .yamllint for the rule config)
 
 .PHONY: markdown-links
 markdown-links: ## Check that every relative Markdown link resolves to a real file
-	@if command -v python3 >/dev/null 2>&1; then \
+	@if [ "$(USE_CONTAINERS)" != "1" ] && command -v python3 >/dev/null 2>&1; then \
 		python3 .github/scripts/check_markdown_links.py; \
 	else \
-		docker run --rm -v "$$(pwd):/data" -w /data $(PYTHON_TEST_IMAGE) python3 .github/scripts/check_markdown_links.py; \
+		$(PYTHON_RUN) python3 .github/scripts/check_markdown_links.py; \
 	fi
 
 .PHONY: no-french
 no-french: ## Guard against reintroducing French text (repo was fully translated to English)
-	@if command -v python3 >/dev/null 2>&1; then \
+	@if [ "$(USE_CONTAINERS)" != "1" ] && command -v python3 >/dev/null 2>&1; then \
 		python3 .github/scripts/check_no_french.py; \
 	else \
-		docker run --rm -v "$$(pwd):/data" -w /data $(PYTHON_TEST_IMAGE) python3 .github/scripts/check_no_french.py; \
+		$(PYTHON_RUN) python3 .github/scripts/check_no_french.py; \
 	fi
 
 .PHONY: compose-validate
-compose-validate: runner-compose-validate ## Validate Compose files against placeholder secrets
+compose-validate: ## Validate Compose files against placeholder secrets
 	@tmpenv=$$( [ -f .env ] && echo 1 || echo 0 ); \
 	[ -f .env ] || cp .env.example .env; \
 	if [ ! -f traefik/traefik.yml ] || [ ! -f traefik/dynamic.yml ]; then \
@@ -110,38 +136,34 @@ compose-validate: runner-compose-validate ## Validate Compose files against plac
 	if [ "$$tmpenv" = "0" ]; then rm -f .env; fi; \
 	exit "$$status"
 
-.PHONY: runner-compose-validate
-runner-compose-validate: ## Validate the declarative self-hosted runner topology
-	@RUNNER_TOKEN=validation-only RUNNER_NAME=validation-only \
-		docker compose -f runner/docker-compose.yml config -q
-
 .PHONY: authentik-tests
 authentik-tests: ## Run Authentik provisioning and repository validator unit tests
-	@if command -v python3 >/dev/null 2>&1; then \
+	@if [ "$(USE_CONTAINERS)" != "1" ] && command -v python3 >/dev/null 2>&1; then \
 		python3 -m unittest discover -s authentik/tests -v && \
 		python3 -m unittest discover -s .github/scripts -p 'test_*.py' -v; \
 	else \
-		docker run --rm -v "$$(pwd):/data" -w /data $(PYTHON_TEST_IMAGE) \
-			python3 -m unittest discover -s authentik/tests -v && \
-		docker run --rm -v "$$(pwd):/data" -w /data $(PYTHON_TEST_IMAGE) \
+		$(PYTHON_RUN) sh -c 'python3 -m pip install --quiet --user --no-cache-dir \
+			--require-hashes -r .github/requirements-tests.txt && \
+			python3 -m unittest discover -s authentik/tests -v' && \
+		$(PYTHON_RUN) \
 			python3 -m unittest discover -s .github/scripts -p 'test_*.py' -v; \
 	fi
 
 .PHONY: vault-tests
 vault-tests: ## Run Vault provisioning unit tests
-	@if command -v python3 >/dev/null 2>&1; then \
+	@if [ "$(USE_CONTAINERS)" != "1" ] && command -v python3 >/dev/null 2>&1; then \
 		python3 -m unittest discover -s vault/tests -v; \
 	else \
-		docker run --rm -v "$$(pwd):/data" -w /data $(PYTHON_TEST_IMAGE) \
+		$(PYTHON_RUN) \
 			python3 -m unittest discover -s vault/tests -v; \
 	fi
 
 .PHONY: python-automation-tests
 python-automation-tests: ## Run shared HTTP client and application provisioning unit tests
-	@if command -v python3 >/dev/null 2>&1; then \
+	@if [ "$(USE_CONTAINERS)" != "1" ] && command -v python3 >/dev/null 2>&1; then \
 		python3 -m unittest discover -s scripts/tests -p 'test_*.py' -v; \
 	else \
-		docker run --rm -v "$$(pwd):/data" -w /data $(PYTHON_TEST_IMAGE) \
+		$(PYTHON_RUN) \
 			python3 -m unittest discover -s scripts/tests -p 'test_*.py' -v; \
 	fi
 
@@ -150,7 +172,7 @@ prometheus-tests: ## Run Prometheus hydration tests
 	@if command -v bash >/dev/null 2>&1; then \
 		bash prometheus/tests/test_hydrate_config.sh; \
 	else \
-		docker run --rm -v "$$(pwd):/data" -w /data $(PYTHON_TEST_IMAGE) \
+		$(PYTHON_RUN) \
 			bash prometheus/tests/test_hydrate_config.sh; \
 	fi
 
