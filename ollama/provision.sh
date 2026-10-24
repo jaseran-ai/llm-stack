@@ -59,16 +59,16 @@ fi
 # and sometimes dramatically better than, auto-detection - so this is a general hardening, not
 # a environment-specific hack. See ollama/README.md for the full investigation.
 CPU_COUNT="$(docker compose exec -T ollama nproc 2>/dev/null | tr -d '[:space:]')" || true
+THREAD_PARAM=""
 if [ -n "$CPU_COUNT" ] && [ "$CPU_COUNT" -gt 0 ] 2>/dev/null; then
-  echo "Pinning ${OLLAMA_MODEL} to ${CPU_COUNT} CPU threads (matches the container's real core count)..."
-  docker compose exec -T ollama sh -c "printf 'FROM %s\nPARAMETER num_thread %s\n' '$OLLAMA_SOURCE_MODEL' '$CPU_COUNT' > /tmp/Modelfile.llm-stack"
-  if docker compose exec -T ollama ollama create "$OLLAMA_MODEL" -f /tmp/Modelfile.llm-stack >/dev/null 2>&1; then
-    echo "   -> num_thread=${CPU_COUNT} applied to ${OLLAMA_MODEL}."
-  else
-    echo "   -> WARNING: could not apply num_thread, ${OLLAMA_MODEL} will use Ollama's own auto-detected thread count."
-    docker compose exec -T ollama ollama cp "$OLLAMA_SOURCE_MODEL" "$OLLAMA_MODEL" || true
-  fi
+  THREAD_PARAM="PARAMETER num_thread $CPU_COUNT"
+fi
+
+echo "Configuring ${OLLAMA_MODEL} with 32k context window (num_ctx 32768) and CPU thread pinning..."
+docker compose exec -T ollama sh -c "printf 'FROM %s\n%s\nPARAMETER num_ctx 32768\n' '$OLLAMA_SOURCE_MODEL' '$THREAD_PARAM' > /tmp/Modelfile.llm-stack"
+if docker compose exec -T ollama ollama create "$OLLAMA_MODEL" -f /tmp/Modelfile.llm-stack >/dev/null 2>&1; then
+  echo "   -> num_ctx=32768 and ${THREAD_PARAM:-auto-thread} applied to ${OLLAMA_MODEL}."
 else
-  echo "   -> WARNING: could not detect the ollama container's CPU count, copying source model directly."
+  echo "   -> WARNING: could not create customized ${OLLAMA_MODEL}, copying source model directly."
   docker compose exec -T ollama ollama cp "$OLLAMA_SOURCE_MODEL" "$OLLAMA_MODEL" || true
 fi
