@@ -6,6 +6,15 @@
         fallthrough
     }
 
+    # Every other record type (AAAA, MX, ...) for the same names: NOERROR with an empty answer
+    # (NODATA) instead of a forwarded NXDOMAIN, which would tell resolvers such as
+    # systemd-resolved that the name does not exist at all. The SOA allows negative caching.
+    template IN ANY ${DOMAIN} {
+        match "(^|\.)${ESCAPED_DOMAIN}\.$"
+        authority "${DOMAIN}. 60 IN SOA ns.${DOMAIN}. hostmaster.${DOMAIN}. 1 3600 600 86400 60"
+        fallthrough
+    }
+
     # Upstream resolver forwarding for all other public queries
     forward . 1.1.1.1 8.8.8.8 {
         max_concurrent 1000
