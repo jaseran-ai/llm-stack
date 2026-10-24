@@ -103,7 +103,7 @@ while a down Node Exporter is covered by the existing `ServiceDown` alert.
 This monitor does not recover historical events.
 
 S3 batch exports: `LANGFUSE_S3_BATCH_EXPORT_EXTERNAL_ENDPOINT=https://s3.${DOMAIN}` — the
-generated download links (signed with SigV4) point to SeaweedFS's real S3 API, routed by Caddy
+generated download links (signed with SigV4) point to SeaweedFS's real S3 API, routed by Traefik
 **without** going through Authentik (a valid SigV4 signature is itself a security guarantee, and
 is incompatible with requiring a Forward-Auth session cookie).
 

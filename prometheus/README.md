@@ -44,7 +44,7 @@ key is never hardcoded in the committed template.
 ## Access
 
 * **Prometheus UI**: `http://127.0.0.1:9190` (restricted to `localhost`, never exposed through
-  Caddy).
+  Traefik).
 * **Checking targets**: `http://127.0.0.1:9190/targets` — every job should show `State: UP`.
   Automatically verified by `smoke_test.sh` (the "Prometheus Observability" test).
 

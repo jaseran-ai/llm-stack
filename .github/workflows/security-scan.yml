@@ -15,7 +15,7 @@ jobs:
   # same technique make trivy/compose-validate use), rather than a hardcoded list in this
   # file - so a new/changed service is scanned automatically, with no risk of the workflow
   # silently drifting out of sync with the compose file. Split in two because a "build:"
-  # service (e.g. caddy, custom Cloudflare DNS plugin build - see caddy/README.md) has no
+  # service (e.g. betterleaks, built from its own Dockerfile) has no
   # pullable registry ref for trivy-action to fetch directly; it must be built locally first,
   # unlike every other service's already-published "image:" ref. Uses .env.example as a
   # stand-in, same as the docker-compose-validate job: only the image list is needed, no real
@@ -86,9 +86,7 @@ jobs:
           exit-code: ${{ steps.risk.outputs.exit_code }}
 
   # Same scan, for services built locally from a Dockerfile (image-ref) - built once per
-  # service here, then scanned like any other image. See caddy/Dockerfile and
-  # caddy/README.md for why caddy specifically needs this (the Cloudflare DNS-01 ACME
-  # plugin isn't in the official caddy:*-alpine image).
+  # service here, then scanned like any other image.
   trivy-scan-build:
     needs: trivy-matrix
     if: needs.trivy-matrix.outputs.build_services != '[]'

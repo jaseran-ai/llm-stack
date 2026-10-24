@@ -458,10 +458,10 @@ services:
       # provider) - without this, openid-client defaults to expecting RS256 and rejects every
       # token exchange with "unexpected JWT alg received, expected RS256, got: HS256".
       AUTH_CUSTOM_ID_TOKEN_SIGNED_RESPONSE_ALG: "HS256"
-      # Needed because migrating from Authelia to Authentik means the SAME email now comes
-      # through a new OAuth "sub" (Authentik's own, different from Authelia's) under the same
-      # "custom" provider id - Auth.js treats it as an unlinked account otherwise
-      # (OAuthAccountNotLinked), even though it's the same physical user.
+      # Needed whenever the SAME email comes back with a new OAuth "sub" (e.g. after the
+      # Authentik provider is recreated) under the same "custom" provider id - Auth.js treats
+      # it as an unlinked account otherwise (OAuthAccountNotLinked), even though it's the same
+      # physical user.
       AUTH_CUSTOM_ALLOW_ACCOUNT_LINKING: "true"
       NODE_EXTRA_CA_CERTS: "/etc/ssl/certs/local-ca.crt"
       LANGFUSE_INIT_ORG_ID: ${LANGFUSE_INIT_ORG_ID}
@@ -851,8 +851,7 @@ services:
 
   # Authentik is this stack's SSO/IdP (see authentik/README.md for the full rationale: a real
   # admin UI for users/groups/policies, reliable "groups" OIDC claim propagation, and a native
-  # forward-auth outpost - no third-party component like oauth2-proxy is needed). It replaced
-  # Authelia, which was fully removed once every app had been switched over.
+  # forward-auth outpost - no third-party component like oauth2-proxy is needed).
   authentik-server:
     logging: *default-logging
     image: ghcr.io/goauthentik/server@sha256:ed120caf710ccf82ef0026f0bc74e51615bc95ebff228a7a2d6fc60c441c3868 # 2026.5.6

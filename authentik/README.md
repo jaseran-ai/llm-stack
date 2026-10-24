@@ -1,21 +1,16 @@
 # Authentik (SSO / IdP)
 
 Authentik is this stack's single sign-on identity provider — one login for every admin tool, one
-place to manage users/groups/access policies. It replaced Authelia (the original IdP), migrated
-progressively app-by-app; this document keeps the real bugs found and fixed along the way, since
-they're the kind of thing that resurfaces the moment a new app or blueprint is added.
+place to manage users/groups/access policies. This document also records the real integration
+pitfalls found while wiring each app, since they're the kind of thing that resurfaces the moment
+a new app or blueprint is added.
 
 ---
 
-## Why Authentik (over Authelia/Keycloak)?
+## Why Authentik?
 
-The concrete pain point that triggered the original migration away from Authelia: **Homarr's
-OIDC login had no group-claim-to-role sync** — Homarr's own admin/user distinction lived in its
-own separate internal database, completely disconnected from the IdP's own groups. Admins had to
-be manually re-assigned in two places with no synchronization. (Homarr itself has since been
-removed from this stack entirely - see the root `README.md`'s [Authentik Application Dashboard](../README.md#authentik-application-dashboard-landing-portal--unified-launcher) entry - but this
-was the real, concrete problem that made Authelia's simpler groups model insufficient in the
-first place.)
+The requirement: a single IdP whose groups drive access in every app, without maintaining a
+separate admin/user mapping inside each application.
 
 Authentik was chosen over Keycloak (the other major self-hosted "Okta-style" IdP) because:
 
@@ -24,9 +19,8 @@ Authentik was chosen over Keycloak (the other major self-hosted "Okta-style" IdP
   Open WebUI). Authentik has this built in (a "Proxy Provider" in `forward_single`/domain-level
   mode). Keycloak has no equivalent — its historical companion, `keycloak-gatekeeper`, was
   deprecated and archived in 2020 — meaning a third component (`oauth2-proxy`) would be needed.
-* **Reliable `groups` OIDC claim**, first-class and well-documented, unlike Authelia's 4.39
-  regression (default ID Token claims changed to a strict standard-claims-only set, dropping
-  `groups` unless a `claims_policies` workaround is added).
+* **Reliable `groups` OIDC claim**, first-class and well-documented, so group-based roles
+  propagate to native-OIDC apps without per-app workarounds.
 * **Lower resource footprint.** No Redis required (unlike some other IdPs), reuses this
   project's shared PostgreSQL instance. Keycloak's own docs recommend budgeting 2GB of JVM heap
   alone for "small production" — Authentik's Python/Go stack is comfortably lighter.
@@ -155,81 +149,59 @@ confirmed empirically:
 
 ## A Second Real Bug: Downstream App Header Names Must Match
 
-Migrating Dozzle (the pilot app) surfaced a second, unrelated bug that looked identical to an
+Wiring Dozzle surfaced a second, unrelated bug that looked identical to an
 RBAC/policy failure at first: after fully fixing the OAuth flow above, an authenticated,
 correctly-group-authorized user still got a plain-text `Unauthorized user` response (**not** an
 Authentik-branded error page — the tell that it wasn't Authentik rejecting the request at all).
 
 Root cause: Dozzle's own `DOZZLE_AUTH_PROVIDER=forward-proxy` mode reads specific header names,
-configured in `docker-compose.yml` via `DOZZLE_AUTH_HEADER_USER`/`_EMAIL`/`_NAME`. These were
-still set to the previous IdP's header convention (`Remote-User`, `Remote-Email`,
-`Remote-Name`), but Authentik's forward-auth outpost sends **differently named** headers
+configured in `docker-compose.yml` via `DOZZLE_AUTH_HEADER_USER`/`_EMAIL`/`_NAME`. Their
+defaults follow the common `Remote-User`/`Remote-Email`/`Remote-Name` convention, but
+Authentik's forward-auth outpost sends **differently named** headers
 (`X-Authentik-Username`, `X-Authentik-Email`, `X-Authentik-Name`, `X-Authentik-Groups`, ...).
 Dozzle never received the header it expected and rejected every request with its own generic
 error — easy to misdiagnose as a policy/RBAC problem since the symptom (401, "Unauthorized")
 looks superficially similar.
 
-**Every app behind the `authentik_auth` Caddy snippet must have its own downstream
+**Every app behind the `authentik-auth` Traefik middleware must have its own downstream
 header-name configuration checked** (if it has one) — this is not a one-time fix, it applies
 per app.
 
 ---
 
-## Native-OIDC Apps: Three More Real Bugs (Homarr)
+## Native-OIDC Apps: Universal Pitfalls
 
-**Historical note**: Homarr has since been removed from this stack (its separate landing
-dashboard was found to duplicate Authentik's own native Application Dashboard - see the root
-`README.md`'s [Authentik Application Dashboard](../README.md#authentik-application-dashboard-landing-portal--unified-launcher) entry). The bugs below are kept because they remain directly
-relevant to every native-OIDC app still in the stack (Langfuse, LiteLLM, CHouse UI all hit the
-same `grant_types` bug, for example), and because Langfuse's bug list further down repeatedly
-compares against what Homarr's client did or didn't hit.
+Native-OIDC apps call `/application/o/authorize/` and the token endpoints themselves, which
+exposes two pitfalls that forward-auth apps never hit:
 
-Homarr (the first native-OIDC app, as opposed to a forward-auth-gated one) surfaced three
-additional bugs, none of which affect the forward-auth apps above because they never call
-`/application/o/authorize/` directly from the app itself:
-
-1. **Missing Caddy network alias for `authentik.${DOMAIN}`.** Caddy's `docker-compose.yml`
-   service declares Docker network aliases for every app hostname (`home.${DOMAIN}`,
-   `chat.${DOMAIN}`, etc.) so that *server-to-server* calls from one container to another
-   resolve correctly without needing a real DNS server. `authentik.${DOMAIN}` was missing from
-   that list at first — Homarr's own OIDC discovery request failed with
-   `getaddrinfo ENOTFOUND authentik.dev.local` until it was added.
+1. **Server-to-server calls to `authentik.${DOMAIN}` must resolve inside Docker.** OIDC
+   discovery and token requests are made *from the app container*, not the browser. The
+   `traefik` service therefore declares Docker network aliases for the public hostnames
+   (`authentik.${DOMAIN}`, `chat.${DOMAIN}`, ...) so these calls reach Traefik without a real DNS
+   server. A missing alias shows up as `getaddrinfo ENOTFOUND authentik.<domain>` in the app's
+   logs.
 2. **`grant_types` defaults to an empty list on `authentik_providers_oauth2.oauth2provider`.**
    Without explicitly setting it in the blueprint, Authentik silently accepts the provider but
    rejects **every single** `/application/o/authorize/?response_type=code...` request with a
    generic `invalid_request - The request is otherwise malformed` (confirmed via
    `authentik/providers/oauth2/views/authorize.py`'s `check_grant()`: `"authorization_code" not
    in self.provider.grant_types`, since that list is empty). Forward-auth (Proxy) providers never
-   hit this code path, which is why 7 apps migrated cleanly before this was ever noticed. Fixed
-   by adding `grant_types: [authorization_code, refresh_token]` to the OAuth2Provider blueprint
-   entry — required for **every** native-OIDC app blueprint.
-3. **`AUTH_OIDC_ENABLE_DANGEROUS_CREDENTIALS_LINKING=true` requires `email_verified: true`** from
-   the IdP (to link an OIDC login to a pre-existing local username/password account). Authentik
-   does not set `email_verified` by default (no email-verification stage configured), so Homarr
-   threw an unhandled `OAuthProfileParseError` on every login attempt. Fixed by removing that env
-   var (default `false`) — it was never needed since none of our SSO users have separate local
-   Homarr credential accounts to link against; `AUTH_OIDC_ENABLE_DANGEROUS_ACCOUNT_LINKING` (for
-   linking to another *OIDC* identity by email) is unaffected and stays enabled.
-
-Homarr also needs one Homarr-side, non-Authentik configuration step: Homarr matches the OIDC
-`groups` claim against local group *names* (no dedicated "admin group" setting exists) - a local
-group named `admins` with the `admin` permission is created idempotently by `homarr/provision.sh`
-so the Authentik `admins` group maps onto full Homarr admin rights automatically on first login.
+   hit this code path. Fixed by adding `grant_types: [authorization_code, refresh_token]` to the
+   OAuth2Provider blueprint entry — required for **every** native-OIDC app blueprint.
 
 ---
 
 ## Native-OIDC Apps, Round Two: Three More Real Bugs (Langfuse)
 
-Langfuse (NextAuth v4 + `openid-client@5.7.1`, an older stack than Homarr's NextAuth v5 +
-`oauth4webapi`) surfaced three further bugs - none overlapping with Homarr's:
+Langfuse (NextAuth v4 + `openid-client@5.7.1`) surfaced three further bugs:
 
 1. **A trailing slash on the issuer causes a double-slash discovery URL that isn't followed.**
    Langfuse builds its OIDC discovery URL as a **plain string concatenation**:
    `` `${issuer}/.well-known/openid-configuration` `` (confirmed by decompiling Langfuse's own
    bundled server code) - it does not check whether `issuer` already ends in `/`. Authentik's
    per-provider issuer URLs always end in `/` (e.g. `.../application/o/langfuse/`), so this
-   produces `.../application/o/langfuse//.well-known/openid-configuration` (double slash). Caddy
-   normalizes that to a single slash and responds with a `301 Moved Permanently` - which
+   produces `.../application/o/langfuse//.well-known/openid-configuration` (double slash). A
+   reverse proxy that normalizes the path answers with a `301 Moved Permanently` - which
    `openid-client@5.7.1`'s `Issuer.discover()` does **not** follow (it requires exactly `200 OK`
    on the first response), failing with a generic, unhelpful `SIGNIN_OAUTH_ERROR` that Langfuse's
    own logger drops the underlying exception detail for by default (see below for how to see it).
@@ -237,19 +209,19 @@ Langfuse (NextAuth v4 + `openid-client@5.7.1`, an older stack than Homarr's Next
    `/` in the concatenated URL is exactly what Authentik expects, and the discovered `issuer`
    claim (which Authentik still returns *with* its own trailing slash) is not compared
    byte-for-byte against the configured value in this flow, so there's no mismatch either.
-   Homarr's newer `oauth4webapi`-based OIDC client was not affected because it normalizes/follows
-   this correctly - **this bug class is specific to OIDC-discovery-based clients that don't
-   normalize trailing slashes**. Confirmed this does **not** affect LiteLLM: it doesn't do OIDC
+   **This bug class is specific to OIDC-discovery-based clients that don't normalize trailing
+   slashes**. Confirmed this does **not** affect LiteLLM: it doesn't do OIDC
    discovery at all (explicit, hardcoded `GENERIC_*_ENDPOINT` env vars), so it migrated cleanly
    with no bugs of its own beyond the universal `grant_types` one.
 2. **`unexpected JWT alg received, expected RS256, got: HS256`.** `openid-client` defaults to
    expecting `RS256`-signed ID tokens unless the client is explicitly configured otherwise -
    it does **not** trust the discovery document's own `id_token_signing_alg_values_supported`
    (which correctly advertises `HS256`, since our OAuth2Provider has no RSA `signing_key`
-   configured). Fixed by setting `AUTH_CUSTOM_ID_TOKEN_SIGNED_RESPONSE_ALG=HS256`. Homarr's OIDC
-   client didn't need this override - another `openid-client`-specific quirk.
-3. **`OAuthAccountNotLinked`.** When the same human (`admin@example.com`) is re-provisioned under
-   a different IdP, they arrive with a **different OAuth `sub`** under the same Langfuse
+   configured). Fixed by setting `AUTH_CUSTOM_ID_TOKEN_SIGNED_RESPONSE_ALG=HS256` - an
+   `openid-client`-specific quirk.
+3. **`OAuthAccountNotLinked`.** When the same human (`admin@example.com`) is re-provisioned (for
+   example after the Authentik provider is recreated), they arrive with a **different OAuth
+   `sub`** under the same Langfuse
    provider id (`"custom"`) - Auth.js treats this as an unrelated, unlinked account by default and
    refuses to sign in, even though the e-mail matches an existing user. Fixed by setting
    `AUTH_CUSTOM_ALLOW_ACCOUNT_LINKING=true` (this is the standard, expected fix whenever a
@@ -283,14 +255,14 @@ blueprints have settled out of `unknown`, any are left in `error`, it re-applies
 
 ---
 
-## Caddy Forward-Auth Snippet
+## Traefik Forward-Auth Middleware
 
-`caddy/Caddyfile.template`'s `(authentik_auth)` snippet follows the
-[official Caddy forward-auth pattern](https://docs.goauthentik.io/add-secure-apps/providers/proxy/server_caddy)
-exactly: a `reverse_proxy` for the `/outpost.goauthentik.io/*` path (passthrough to the embedded
-outpost) plus a `forward_auth` directive checking `/outpost.goauthentik.io/auth/caddy`, copying
-the `X-Authentik-*` headers. Protecting a new app with it is a one-line change: add
-`import authentik_auth` to that app's site block (see `../ADDING_AN_APPLICATION.md`).
+`traefik/dynamic.yml.template` declares the `authentik-auth` middleware following the
+[official Traefik forward-auth pattern](https://docs.goauthentik.io/add-secure-apps/providers/proxy/server_traefik):
+a `forwardAuth` call to the embedded outpost at
+`http://authentik-server:9000/outpost.goauthentik.io/auth/traefik`, copying the `X-Authentik-*`
+response headers to the upstream request. Protecting a new app means adding `authentik-auth` to
+its router's middlewares (see `../ADDING_AN_APPLICATION.md`).
 
 ---
 
@@ -301,8 +273,8 @@ CHouse UI, like LiteLLM, uses explicit hardcoded `AUTHORIZATION/TOKEN/USERINFO_E
 
 1. **CHouse UI's OIDC client (`oauth4webapi`) refuses plain HTTP requests by default**
    (`OAUTH_HTTP_REQUEST_FORBIDDEN`) - unlike LiteLLM, whose token/userinfo endpoints go straight
-   to the internal `http://authentik-server:9000/...` (bypassing Caddy/TLS entirely). CHouse
-   UI's token/userinfo endpoints had to go through `https://authentik.${DOMAIN}/...` (Caddy/TLS)
+   to the internal `http://authentik-server:9000/...` (bypassing Traefik/TLS entirely). CHouse
+   UI's token/userinfo endpoints had to go through `https://authentik.${DOMAIN}/...` (Traefik/TLS)
    instead.
 2. **`AUTH_SSO_AUTO_LINK_BY_EMAIL` silently refuses to link unless the IdP claims a verified
    e-mail.** CHouse UI's own SSO code path only attempts to link an incoming OIDC login to an
@@ -318,9 +290,8 @@ CHouse UI, like LiteLLM, uses explicit hardcoded `AUTHORIZATION/TOKEN/USERINFO_E
    mapping on CHouse UI's provider only, setting `"email_verified": true`. This is not a security
    downgrade for this stack: there is no self-registration or e-mail verification stage at all
    (users are provisioned declaratively via blueprints) - the claim is simply always true for
-   every account that exists. Homarr and Langfuse never hit this because their own
-   account-linking flags (`AUTH_OIDC_ENABLE_DANGEROUS_ACCOUNT_LINKING` /
-   `AUTH_CUSTOM_ALLOW_ACCOUNT_LINKING`) don't gate on `email_verified` at all.
+   every account that exists. Langfuse never hits this because its account-linking flag
+   (`AUTH_CUSTOM_ALLOW_ACCOUNT_LINKING`) doesn't gate on `email_verified` at all.
 
 ---
 
@@ -332,13 +303,11 @@ CHouse UI, like LiteLLM, uses explicit hardcoded `AUTHORIZATION/TOKEN/USERINFO_E
 | Grafana | Forward-auth outpost | `admins` only | `GF_AUTH_PROXY_HEADER_NAME=X-Authentik-Username`. |
 | SearXNG | Forward-auth outpost | `admins` only | No app-level header config - pure forward-auth gate. |
 | SeaweedFS Filer Console (`s3-console`) | Forward-auth outpost | `admins` only | No app-level header config. Not to be confused with the SigV4 S3 API (`s3.${DOMAIN}`), which has no forward-auth at all. |
-| ~~Rclone~~ *(removed)* | Forward-auth outpost | `admins` only | Removed from the stack - `rclone.conf` only ever configured a single `SEAWEEDFS` remote, so its S3 browsing/management UI was a pure duplicate of the SeaweedFS Filer Console row above (same data, same `admins`-only access), with none of rclone's actual differentiator (syncing between multiple distinct remotes) ever in use. |
 | Qdrant Dashboard | Forward-auth outpost | `admins` only | No app-level header config - pure forward-auth gate. |
 | Open WebUI | Forward-auth outpost | `admins` **and** `users` | `WEBUI_AUTH_TRUSTED_EMAIL_HEADER`/`WEBUI_AUTH_TRUSTED_NAME_HEADER=X-Authentik-Email`/`X-Authentik-Name`. The only forward-auth app open to both groups (two Policy Bindings, evaluated as OR) - every other one is `admins`-only. |
-| ~~Homarr~~ *(removed)* | Native OIDC (NextAuth v5 / `oauth4webapi`) | `admins` **and** `users` | Removed from the stack - its landing dashboard duplicated Authentik's own native Application Dashboard (`/if/user/`), which already provides per-app RBAC via the same Policy Bindings listed in this table, with no separate group-sync mechanism to maintain. Kept here for historical reference (see the note above this table's section). |
 | Langfuse | Native OIDC (NextAuth v4 / `openid-client`) | `admins` only | `AUTH_CUSTOM_ISSUER` **without** a trailing slash, `AUTH_CUSTOM_ID_TOKEN_SIGNED_RESPONSE_ALG=HS256`, `AUTH_CUSTOM_ALLOW_ACCOUNT_LINKING=true`. |
-| LiteLLM | Native OIDC (`GENERIC_*` env vars, no discovery) | `admins` only | Token/userinfo point directly at `http://authentik-server:9000/...` (internal, bypassing Caddy/TLS). |
-| CHouse UI | Native OIDC (`AUTH_SSO_PROVIDERS_AUTHENTIK_*` env vars, no discovery) | `admins` only | Token/userinfo go through `https://authentik.${DOMAIN}/...` (Caddy/TLS) - its OIDC client refuses plain HTTP. Needs the `llm-stack-email-verified-scope` mapping for account auto-linking. |
+| LiteLLM | Native OIDC (`GENERIC_*` env vars, no discovery) | `admins` only | Token/userinfo point directly at `http://authentik-server:9000/...` (internal, bypassing Traefik/TLS). |
+| CHouse UI | Native OIDC (`AUTH_SSO_PROVIDERS_AUTHENTIK_*` env vars, no discovery) | `admins` only | Token/userinfo go through `https://authentik.${DOMAIN}/...` (Traefik/TLS) - its OIDC client refuses plain HTTP. Needs the `llm-stack-email-verified-scope` mapping for account auto-linking. |
 
 ---
 

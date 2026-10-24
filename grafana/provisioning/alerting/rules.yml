@@ -96,8 +96,7 @@ groups:
           summary: "Container {{ $labels.container_label_com_docker_compose_service }} is using over 90% of its memory limit."
           description: >
             Sustained high memory usage for 5+ minutes usually precedes an OOM kill
-            (already observed for real on litellm, presidio-analyzer, chouse-ui, and homarr
-            during this project's own hardening work). Consider raising the memory limit in
+            (observed in practice on litellm and chouse-ui). Consider raising the memory limit in
             docker-compose.yml if this recurs.
 
       - uid: llm-stack-host-disk-high

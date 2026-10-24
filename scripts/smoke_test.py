@@ -154,7 +154,6 @@ def test_application_dashboard():
     r_apps = admin_sess.get(f'https://authentik.{domain}/api/v3/core/applications/')
     assert r_apps.status_code == 200, f"Applications API failed: HTTP {r_apps.status_code}"
     admin_apps = {a['slug']: a for a in r_apps.json().get('results', [])}
-    assert 'homarr' not in admin_apps, "Homarr application still present in Authentik - removal incomplete"
     expected_app_count = 15
     assert len(admin_apps) == expected_app_count, f"Expected {expected_app_count} applications visible to admin, got {len(admin_apps)}: {sorted(admin_apps)}"
     missing_launch_urls = [slug for slug, a in admin_apps.items() if not a.get('meta_launch_url')]

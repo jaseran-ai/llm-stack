@@ -6,11 +6,8 @@
 #
 # The actual proxy_admin role assignment is no longer done here: it's now handled natively by
 # Authentik on every LiteLLM login via the GENERIC_USER_ROLE_ATTRIBUTE mapping (see
-# authentik/blueprints/20-native-oidc.yaml and docker-compose.yml) - a real fix
-# for a bug where the previous version of this script silently failed to log in at all (it
-# POSTed to an Authelia-era endpoint left over from before this project's SSO migration to
-# Authentik), leaving whether the admin ended up correctly promoted to chance. This script now
-# only pre-warms the admin's LiteLLM_UserTable row with a real SSO login, so it exists
+# authentik/blueprints/20-native-oidc.yaml and docker-compose.yml). This script only
+# pre-warms the admin's LiteLLM_UserTable row with a real SSO login, so it exists
 # immediately after ./start.sh rather than only after someone's first manual visit.
 #
 # The actual Python logic lives in litellm/scripts/provision.py (extracted from an inline

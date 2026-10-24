@@ -442,7 +442,7 @@ def setup_oidc(root_token):
     domain = env.get('DOMAIN')
     if not domain:
         raise RuntimeError("DOMAIN must be set in .env for Vault OIDC configuration")
-    client_secret = env.get('VAULT_OIDC_CLIENT_SECRET', env.get('OPENBAO_OIDC_CLIENT_SECRET', ''))
+    client_secret = env.get('VAULT_OIDC_CLIENT_SECRET', '')
 
     # 1. Enable OIDC auth method if not enabled
     r_auth = http_client.get(f"{VAULT_URL}/v1/sys/auth", headers=headers)
@@ -455,9 +455,7 @@ def setup_oidc(root_token):
     ca_pem = ""
     ca_paths = [
         "traefik/certs/tls.crt",
-        "/etc/traefik/certs/tls.crt",
-        "/caddy_data/caddy/pki/authorities/local/root.crt",
-        "caddy/data/caddy/pki/authorities/local/root.crt"
+        "/etc/traefik/certs/tls.crt"
     ]
     for p in ca_paths:
         if os.path.exists(p):
