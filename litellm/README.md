@@ -17,15 +17,14 @@ observability callbacks (Langfuse, Prometheus).
 ## Declared Models
 
 Every model is an alias of the **same single weight**, bundled inside this Docker Compose
-project — `lfm2.5-thinking:1.2b`, running on the `ollama` service (`http://ollama:11434`,
+project — `lfm2-1.2b-rag`, running on the `ollama` service (`http://ollama:11434`,
 CPU-only, no GPU, no external machine). This stack used to depend on `llama-server`, a GPU
 backend on a separate physical machine; that dependency has been fully removed — see
 [`../ollama/README.md`](../ollama/README.md) for the full rationale and details.
 
 | Model name (LiteLLM alias) | Purpose |
 | :--- | :--- |
-| `lfm2.5-thinking-1.2b` | General/default model (also Open WebUI's `DEFAULT_MODELS`). Native thinking trace via `message.reasoning_content`. |
-| `lfm2.5-thinking-1.2b-no-think` | Same weight, `think: false` (Ollama's native toggle) — thinking trace not split out; the raw `<think>...</think>` tag stays inline in `content` instead. |
+| `lfm2-1.2b-rag` | General/default RAG-optimized model (also Open WebUI's `DEFAULT_MODELS`). |
 
 ---
 

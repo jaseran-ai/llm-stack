@@ -41,7 +41,7 @@ This catalog tracks every functional feature of the LLM Stack. Each feature has 
 
 | Feature ID | Name | Status | Delivering Components | Verification Proof |
 |---|---|---|---|---|
-| `FEAT-LLM-01` | Out-of-the-Box Bundled CPU Inference | **Active** | Ollama (`lfm2.5-thinking:1.2b`) | `smoke_test.py:test_ollama_completion` |
+| `FEAT-LLM-01` | Out-of-the-Box Bundled CPU Inference | **Active** | Ollama (`lfm2-1.2b-rag`) | `smoke_test.py:test_ollama_completion` |
 | `FEAT-LLM-02` | Multi-Provider Unified Proxy Gateway | **Active** | LiteLLM Proxy v1.105 | `smoke_test.py:test_litellm_routing` |
 | `FEAT-LLM-05` | Local Voice Services (Whisper / Piper) | **Planned** | Backlog candidate | Listed in `ROADMAP.md` |
 

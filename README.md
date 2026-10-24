@@ -30,7 +30,7 @@
 ### Why this stack?
 - 🚀 **100% As-Code & Fully Automated**: Zero manual GUI clicks. Secrets are generated dynamically, configurations are versioned as code, and the entire stack boots deterministically via `./setup.sh`.
 - 🔒 **Unified Identity & Zero Trust**: Single Sign-On (SSO) and Role-Based Access Control (RBAC) enforced across every application via **Authentik** (Forward-Auth & Native OIDC).
-- ⚡ **Zero-GPU Required**: Ships with an embedded CPU-friendly model (`lfm2.5-thinking:1.2b` via Ollama) ready immediately out of the box — zero external API keys or expensive GPU hardware required.
+- ⚡ **Zero-GPU Required**: Ships with an embedded CPU-friendly model (`lfm2-1.2b-rag` via Ollama) ready immediately out of the box — zero external API keys or expensive GPU hardware required.
 - 🧠 **Context & Knowledge RAG**: High-performance vector embeddings via **Qdrant** and private web search through **SearXNG** integrated directly into **Open-WebUI**.
 - 📊 **Enterprise LLMOps**: Centralized prompt routing, rate limiting, and token governance with **LiteLLM**, deep tracing with **Langfuse**, and full-stack metrics & logs via **Prometheus**, **Grafana**, and **Loki**.
 - 🛡️ **Defense-in-Depth**: Secrets managed by HashiCorp Vault rendered into isolated memory-backed RAM `tmpfs` (`0700`), with automated PII anonymization via **Presidio / Betterleaks**.

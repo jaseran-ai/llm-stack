@@ -40,7 +40,7 @@ Les composants sont organisés en six plans fonctionnels :
 * **`seaweedfs`** : Serveur unifié master, volume et S3 assurant le stockage d'exports et de documents avec authentification AWS SigV4.
 * **`qdrant`** : Base de données vectorielle gérant les embeddings et la recherche par similarité pour le RAG.
 * **`redis`** : Cache en mémoire pour les files de tâches Langfuse et stockage des surrogate tokens chiffrés.
-* **`ollama`** : Moteur d'inférence CPU local hébergeant le modèle par défaut (`lfm2.5-thinking:1.2b`).
+* **`ollama`** : Moteur d'inférence CPU local hébergeant le modèle par défaut (`lfm2-1.2b-rag`).
 
 ### 6. Plan Observabilité & Supervision
 * **`langfuse-web` & `langfuse-worker`** : Plateforme d'observabilité LLMOps traçant les prompts, latences, consommation de tokens et évaluations.

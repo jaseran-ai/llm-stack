@@ -32,7 +32,7 @@ Renvoie la liste des identifiants de modèles et alias de routage actuellement a
   "object": "list",
   "data": [
     {
-      "id": "lfm2.5-thinking-1.2b",
+      "id": "lfm2-1.2b-rag",
       "object": "model",
       "owned_by": "llm-stack"
     }
@@ -51,7 +51,7 @@ Soumet un prompt pour génération avec biffure automatique des secrets et donn�
 * **Charge utile** :
 ```json
 {
-  "model": "lfm2.5-thinking-1.2b",
+  "model": "lfm2-1.2b-rag",
   "messages": [
     {"role": "user", "content": "Explique l'architecture zero-trust en un paragraphe."}
   ],

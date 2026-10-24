@@ -32,7 +32,7 @@ Open WebUI seeds its internal SQLite database once on first initialization. Cert
 
 ### 2. Model Access Grants (Least-Privilege)
 - In Open WebUI, model visibility defaults to deny for standard `user` accounts unless an explicit public wildcard grant exists.
-- The provisioner automatically registers public read grants (`{"principal_type": "user", "principal_id": "*", "permission": "read"}`) on all LiteLLM base models (`lfm2.5-thinking-1.2b`, `lfm2.5-thinking-1.2b-no-think`, `lfm2.5-thinking-1.2b-protected`).
+- The provisioner automatically registers public read grants (`{"principal_type": "user", "principal_id": "*", "permission": "read"}`) on the LiteLLM base model (`lfm2-1.2b-rag`).
 
 ### 3. Web Search Configuration
 - Configures `ENABLE_WEB_SEARCH=True` and `WEB_SEARCH_ENGINE=searxng` targeting `http://searxng:8080/search?q=<query>`.

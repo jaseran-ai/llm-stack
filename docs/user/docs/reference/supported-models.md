@@ -8,8 +8,8 @@ This document specifies the default bundled inference models and external provid
 
 The stack includes a local inference backend running inside the `ollama` container.
 
-* **Model Name**: `lfm2.5-thinking:1.2b`
-* **Model Alias**: `lfm2.5-thinking-1.2b`
+* **Model Name**: `lfm2-1.2b-rag`
+* **Model Alias**: `lfm2-1.2b-rag`
 * **Parameters**: 1.2 Billion parameters
 * **Quantization**: Q4_K_M GGUF format
 * **Hardware Requirements**: Runs entirely on host CPU (consumes ~1.8 GB RAM). No GPU required.

@@ -19,7 +19,7 @@ La stack LLM répond à trois exigences fonctionnelles fondamentales :
 |---|---|---|
 | **1** | **Reproductibilité déterministe** | L'ensemble de la plateforme peut être déployé depuis un clone vierge en une seule étape automatisée (`./setup.sh`), sans manipulation manuelle de GUI ni modifications non commitées en base de données. |
 | **2** | **Sécurité Zero-Trust par défaut** | Isolation stricte du périmètre, aucun port de base de données exposé en clair, isolation des secrets en mémoire vive (Vault tmpfs) et SSO/RBAC obligatoire sur tous les endpoints. |
-| **3** | **Portabilité & Efficacité des ressources** | Inférence locale CPU clé en main (`lfm2.5-thinking:1.2b`) garantissant l'exécution autonome de la stack sur un ordinateur portable, une machine virtuelle ou un serveur homelab sans exiger de GPU. |
+| **3** | **Portabilité & Efficacité des ressources** | Inférence locale CPU clé en main (`lfm2-1.2b-rag`) garantissant l'exécution autonome de la stack sur un ordinateur portable, une machine virtuelle ou un serveur homelab sans exiger de GPU. |
 | **4** | **Vérifiabilité empirique** | Chaque fonctionnalité, frontière de sécurité et contrainte RBAC est automatiquement validée par des suites de tests de régression (`./smoke_test.sh` 28/28 tests réussis). |
 
 ---

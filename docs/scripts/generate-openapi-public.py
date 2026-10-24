@@ -63,7 +63,7 @@ SOURCE_SPEC = {
                                             "items": {
                                                 "type": "object",
                                                 "properties": {
-                                                    "id": {"type": "string", "example": "lfm2.5-thinking-1.2b"},
+                                                    "id": {"type": "string", "example": "lfm2-1.2b-rag"},
                                                     "object": {"type": "string", "example": "model"},
                                                     "owned_by": {"type": "string", "example": "llm-stack"}
                                                 }
@@ -90,7 +90,7 @@ SOURCE_SPEC = {
                                 "type": "object",
                                 "required": ["model", "messages"],
                                 "properties": {
-                                    "model": {"type": "string", "example": "lfm2.5-thinking-1.2b"},
+                                    "model": {"type": "string", "example": "lfm2-1.2b-rag"},
                                     "messages": {
                                         "type": "array",
                                         "items": {

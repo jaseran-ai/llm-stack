@@ -8,8 +8,8 @@ Ce document détaille le modèle CPU local fourni par défaut et les fournisseur
 
 La stack intègre un backend d'inférence local via le conteneur `ollama`.
 
-* **Nom du modèle** : `lfm2.5-thinking:1.2b`
-* **Alias de routage** : `lfm2.5-thinking-1.2b`
+* **Nom du modèle** : `lfm2-1.2b-rag`
+* **Alias de routage** : `lfm2-1.2b-rag`
 * **Paramètres** : 1,2 milliard de paramètres
 * **Quantification** : Format GGUF Q4_K_M
 * **Exigences matérielles** : S'exécute intégralement sur CPU hôte (~1,8 Go de RAM consommée). Zéro GPU requis.

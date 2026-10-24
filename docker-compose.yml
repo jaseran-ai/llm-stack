@@ -32,10 +32,10 @@ services:
       - WEBUI_AUTH_TRUSTED_NAME_HEADER=X-Authentik-Name
       - DEFAULT_USER_ROLE=user
       - ENABLE_OAUTH_SIGNUP=True
-      # lfm2.5-thinking-1.2b runs on the ollama service (CPU-only, no GPU dependency), so it
+      # lfm2-1.2b-rag runs on the ollama service (CPU-only, no GPU dependency), so it
       # is the only model guaranteed to work immediately after `docker compose up -d` on any
       # machine - see ollama/README.md.
-      - DEFAULT_MODELS=lfm2.5-thinking-1.2b
+      - DEFAULT_MODELS=lfm2-1.2b-rag
       # This small CPU-only model has no natural stopping point for open-ended prompts
       # (confirmed empirically: a single completion ran past 1000 tokens / 20+ minutes with no
       # bound). Open WebUI's auxiliary background generation tasks each trigger an additional,
@@ -105,7 +105,7 @@ services:
     # No GPU reservation on purpose: this is meant to run on the widest possible range of
     # machines out of the box, with zero configuration. Ollama auto-detects and uses a GPU if
     # one is actually available to the container, but nothing here requires it - the model
-    # chosen (lfm2.5-thinking:1.2b, ~731MB) is deliberately small enough to run comfortably on
+    # chosen (lfm2-1.2b-rag, ~730MB) is deliberately small enough to run comfortably on
     # CPU alone. This is the ONLY inference backend in the stack: every model in
     # litellm/litellm-config.yaml is an alias of this single weight - the project has no
     # external hardware dependency at all (it used to depend on "llama-server", a GPU backend

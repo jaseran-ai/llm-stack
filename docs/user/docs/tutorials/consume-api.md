@@ -27,7 +27,7 @@ Example response:
   "object": "list",
   "data": [
     {
-      "id": "lfm2.5-thinking-1.2b",
+      "id": "lfm2-1.2b-rag",
       "object": "model",
       "owned_by": "llm-stack"
     }
@@ -51,7 +51,7 @@ client = OpenAI(
 )
 
 response = client.chat.completions.create(
-    model="lfm2.5-thinking-1.2b",
+    model="lfm2-1.2b-rag",
     messages=[
         {"role": "system", "content": "You are a helpful software assistant."},
         {"role": "user", "content": "Write a Python function to compute Fibonacci numbers."}
@@ -72,7 +72,7 @@ curl -s -X POST "https://litellm.${DOMAIN}/v1/chat/completions" \
   -H "Authorization: Bearer ${LITELLM_KEY}" \
   -H "Content-Type: application/json" \
   -d '{
-    "model": "lfm2.5-thinking-1.2b",
+    "model": "lfm2-1.2b-rag",
     "messages": [
       {"role": "user", "content": "My AWS key is AKIAIOSFODNN7EXAMPLE, can you help me rotate it?"}
     ]

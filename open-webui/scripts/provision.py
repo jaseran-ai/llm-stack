@@ -27,9 +27,9 @@ from http_client import Session
 
 KB_NAME = "AAPL 10-Q Example Knowledge"
 MODEL_ID = "knowledge-search-assistant"
-BASE_MODEL_ID = "lfm2.5-thinking-1.2b"
+BASE_MODEL_ID = "lfm2-1.2b-rag"
 # Every LiteLLM-backed base model, aliased in litellm/litellm-config.yaml (see ollama/README.md).
-BASE_MODEL_IDS = ["lfm2.5-thinking-1.2b", "lfm2.5-thinking-1.2b-no-think", "lfm2.5-thinking-1.2b-protected"]
+BASE_MODEL_IDS = ["lfm2-1.2b-rag"]
 
 # Public read access ('user'/'*' wildcard grant) is required on EVERY model below, including
 # the 3 plain base models from the LiteLLM connection: this Open WebUI version's access model
@@ -230,10 +230,8 @@ def provision_models(session: Session, base: str, headers: dict, kb_id: str | No
             "name": "Knowledge & Search Assistant",
             "params": {
                 "system": "You are a helpful assistant with access to a knowledge base and web search. Use the attached knowledge and, when enabled, live web search results to answer accurately.",
-                # lfm2.5-thinking-1.2b (CPU-only, no GPU - see ollama/README.md) is a hybrid
-                # thinking model that can otherwise reason indefinitely with no natural stopping
-                # point for open-ended prompts - confirmed empirically (a single test completion
-                # ran past 1000 tokens / 20+ minutes on constrained CPU with no max_tokens set).
+                # lfm2-1.2b-rag (CPU-only, no GPU - see ollama/README.md) is an optimized
+                # RAG model that can run indefinitely if open-ended prompts have no max_tokens set.
                 # Capping it here applies to every call using this model, including Open WebUI's
                 # own internal follow-up completions, not just the user-facing one.
                 "max_tokens": 300,

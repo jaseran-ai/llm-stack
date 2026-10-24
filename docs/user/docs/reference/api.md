@@ -32,7 +32,7 @@ Returns the list of currently active model identifiers and routing aliases.
   "object": "list",
   "data": [
     {
-      "id": "lfm2.5-thinking-1.2b",
+      "id": "lfm2-1.2b-rag",
       "object": "model",
       "owned_by": "llm-stack"
     }
@@ -51,7 +51,7 @@ Submits a prompt for generation with automatic PII and secret redaction.
 * **Payload**:
 ```json
 {
-  "model": "lfm2.5-thinking-1.2b",
+  "model": "lfm2-1.2b-rag",
   "messages": [
     {"role": "user", "content": "Explain zero-trust architecture in one paragraph."}
   ],

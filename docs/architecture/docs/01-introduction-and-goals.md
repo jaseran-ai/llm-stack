@@ -19,7 +19,7 @@ The LLM Stack satisfies three core functional requirements:
 |---|---|---|
 | **1** | **Deterministic Reproducibility** | The entire platform can be deployed from a fresh clone in a single automated step (`./setup.sh`) without manual GUI interaction or uncommitted database edits. |
 | **2** | **Zero-Trust Security by Default** | Strict perimeter isolation, no exposed plaintext database ports, in-memory secret isolation (Vault tmpfs), and mandatory SSO/RBAC across all endpoints. |
-| **3** | **Portability & Resource Efficiency** | Out-of-the-box local CPU inference (`lfm2.5-thinking:1.2b`) ensuring the entire stack runs autonomously on a single laptop, VM, or homelab without GPU hardware requirements. |
+| **3** | **Portability & Resource Efficiency** | Out-of-the-box local CPU inference (`lfm2-1.2b-rag`) ensuring the entire stack runs autonomously on a single laptop, VM, or homelab without GPU hardware requirements. |
 | **4** | **Empirical Verifiability** | Every feature, security boundary, and RBAC constraint is automatically validated by regression test suites (`./smoke_test.sh` 28/28 tests passing). |
 
 ---

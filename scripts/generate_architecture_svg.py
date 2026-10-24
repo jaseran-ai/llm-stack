@@ -142,7 +142,7 @@ def generate_svg():
     svg.append(render_tier_box(30, 375, 1140, 120, 3, "LLM Gateway, Routing & Local Inference"))
 
     svg.append(render_card(150, 405, 280, 70, "LiteLLM Gateway", "Model Router, Budgets & Governance", "HTTP:4000", "#d97706", "NATIVE OIDC"))
-    svg.append(render_card(490, 405, 270, 70, "Ollama Inference", "CPU/GPU Model (lfm2.5-thinking)", "TCP:11434", "#16a34a", "LOCAL ENGINE"))
+    svg.append(render_card(490, 405, 270, 70, "Ollama Inference", "CPU/GPU Model (lfm2-1.2b-rag)", "TCP:11434", "#16a34a", "LOCAL ENGINE"))
     svg.append(render_card(810, 405, 250, 70, "Betterleaks / Presidio", "Reversible PII Anonymization", "HTTP:8000", "#7c3aed", "GUARDRAILS"))
 
     # Connectors Tier 2 -> Tier 3

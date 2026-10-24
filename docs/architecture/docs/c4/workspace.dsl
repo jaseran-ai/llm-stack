@@ -26,7 +26,7 @@ workspace "LLM Stack Architecture" "Enterprise Self-Hosted LLM & LLMOps Platform
             qdrant = container "Qdrant Vector Database" "Vector index and semantic similarity search for RAG." "Qdrant v1.19" "Database"
             
             # Inference Engine
-            ollama = container "Ollama Inference Engine" "Bundled local CPU/GPU model runtime (lfm2.5-thinking:1.2b)." "Ollama 0.40" "Inference"
+            ollama = container "Ollama Inference Engine" "Bundled local CPU/GPU model runtime (lfm2-1.2b-rag)." "Ollama 0.40" "Inference"
             
             # Observability Tier
             langfuse = container "Langfuse Observability" "LLMOps tracing, prompt evaluation, and telemetry." "Next.js / Node" "Observability"

@@ -21,23 +21,21 @@ inside the container) — never in Git.
 
 ---
 
-## Model Choice: `lfm2.5-thinking:1.2b`
+## Model Choice: `lfm2-1.2b-rag`
 
-[Liquid AI's LFM2.5](https://ollama.com/library/lfm2.5-thinking), `1.2B` parameters, `Q4_K_M`
-quantization, **~731MB** download. Chosen specifically because:
+[Liquid AI's LFM2-1.2B-RAG](https://huggingface.co/LiquidAI/LFM2-1.2B-RAG), `1.2B` parameters, `Q4_K_M`
+quantization, **~730MB** download (`hf.co/LiquidAI/LFM2-1.2B-RAG-GGUF:Q4_K_M`). Chosen specifically because:
 
 * **No GPU required.** Small enough to generate a real completion on any modern CPU in a
   reasonable time (~10 tokens/sec on a modest 4-core CPU once threads are pinned correctly -
   see "CPU Thread Pinning" below for a real bug this uncovered).
-* **128K context window** (`details.context_length` from `/api/tags`) despite the tiny size.
-* **Native "thinking"/reasoning support** (`capabilities: ["completion", "tools", "thinking"]`),
-  with a native API-level toggle (`think: true/false`) - see below.
-* **Multilingual.**
+* **Specialized for RAG & Instruction Following.** Specifically fine-tuned for high-accuracy
+  document question answering, context extraction, and multi-turn retrieval tasks without hallucinating.
+* **32K context window.**
+* **Multilingual.** Supports English, French, German, Spanish, Arabic, Japanese, Korean, Chinese, and Portuguese.
 
-This single weight is aliased in LiteLLM (see
-[`../litellm/README.md`](../litellm/README.md) for the full table): `lfm2.5-thinking-1.2b`
-(general/default) and `lfm2.5-thinking-1.2b-no-think` (thinking disabled). Ollama only ever
-loads the weight once regardless of how many LiteLLM aliases point to it.
+This single weight is exposed in LiteLLM as `lfm2-1.2b-rag` (see
+[`../litellm/README.md`](../litellm/README.md) for details). Ollama loads the weight locally.
 
 ---
 
@@ -61,7 +59,7 @@ CPU. This was tracked down to a real, reproducible root cause, not just "the mac
   roughly a **15x improvement**, with no other change.
 
 `ollama/provision.sh` fixes this unconditionally (not as a one-off workaround): after pulling
-the model, it re-creates the same `lfm2.5-thinking:1.2b` tag with `PARAMETER num_thread <N>`
+the model, it re-creates the `lfm2-1.2b-rag` tag with `PARAMETER num_thread <N>`
 baked in, where `<N>` is dynamically read from `docker compose exec ollama nproc` (never
 hardcoded) - so it always matches whatever machine the stack is actually deployed on. Explicitly
 pinning the thread count this way is never worse than, and can be dramatically better than,
@@ -114,46 +112,25 @@ Confirmed empirically that LiteLLM automatically maps `message.thinking` to the 
 `message.reasoning_content` field, and correctly forwards the `think` field through to Ollama:
 
 ```bash
-# think enabled (default) -> reasoning_content populated, content empty until the model
-# finishes "thinking"
+```bash
 curl https://litellm.${DOMAIN}/v1/chat/completions \
   -H "Authorization: Bearer ${LITELLM_MASTER_KEY}" \
   -H "Content-Type: application/json" \
-  -d '{"model": "lfm2.5-thinking-1.2b", "messages": [{"role": "user", "content": "Say hi"}], "max_tokens": 20}'
+  -d '{"model": "lfm2-1.2b-rag", "messages": [{"role": "user", "content": "Say hi"}], "max_tokens": 20}'
 # -> { "choices": [{ "message": {
-#        "content": "",
-#        "reasoning_content": "Okay, let's see. The user said \"Say hi\". I need to respond"
-#      }}] }
-
-# think: false -> no split: the model's raw output, including the literal, unparsed
-# "<think>...</think>" tag, is returned as-is in content
-curl https://litellm.${DOMAIN}/v1/chat/completions \
-  -H "Authorization: Bearer ${LITELLM_MASTER_KEY}" \
-  -H "Content-Type: application/json" \
-  -d '{"model": "lfm2.5-thinking-1.2b-no-think", "messages": [{"role": "user", "content": "Say hi"}], "max_tokens": 20}'
-# -> { "choices": [{ "message": {
-#        "content": "<think> Okay, let's see. The user said \"Say hi\". I need to respond"
+#        "content": "Hello! How can I assist you today?"
 #      }}] }
 ```
 
-Open WebUI renders `reasoning_content` as its usual collapsible "thinking" block in the chat UI,
-same as any other reasoning model.
-
-**Important caveat**: `think: false` does not make the model skip reasoning or answer faster —
-it only changes whether Ollama splits the trace out of `content`. The underlying model still
-"thinks" the same amount either way (confirmed empirically: both variants produced the identical
-reasoning text for the same prompt, just structured differently in the response).
+Open WebUI communicates with LiteLLM using standard OpenAI chat completion semantics.
 
 ---
 
-## Unbounded Generation Risk (No Natural Stop for a Small Hybrid-Reasoning Model)
+## Unbounded Generation Risk (No Natural Stop for a Small Model)
 
-`lfm2.5-thinking:1.2b` is a small "hybrid thinking" model: for open-ended or context-heavy
+`lfm2-1.2b-rag` is a small CPU model: for open-ended or context-heavy
 prompts (for example, Open WebUI's web search or RAG flows, which inject a lot of retrieved text
-into the prompt) it can keep reasoning far longer than a larger, better-aligned model would,
-with no natural stopping point. Confirmed empirically: a single test completion (web search
-prompt, no `max_tokens` set) ran past 1000 tokens and 20+ minutes on a CPU-throttled sandbox
-without reaching a final answer.
+into the prompt) it can generate extensive text if unconstrained.
 
 Two mitigations are applied:
 
@@ -173,7 +150,7 @@ Two mitigations are applied:
 
 ## Open WebUI Default Model
 
-`DEFAULT_MODELS=lfm2.5-thinking-1.2b` is set on the `open-webui` service in
+`DEFAULT_MODELS=lfm2-1.2b-rag` is set on the `open-webui` service in
 [`../docker-compose.yml`](../docker-compose.yml), making it the pre-selected model for every new
 chat.
 
@@ -193,19 +170,19 @@ DEFAULT_MODELS not read at all once ui.default_models already exists in webui.db
 
 ## Provisioning (`provision.sh`)
 
-Called by `../init.sh` right after `docker compose up -d` (needs the container actually running,
+Called by `../start.sh` right after `docker compose up -d` (needs the container actually running,
 unlike `../grafana/provision.sh`, which is pure file/DB manipulation
-run *before* `up -d`). Runs `docker compose exec ollama ollama pull lfm2.5-thinking:1.2b`, which
+run *before* `up -d`). Runs `docker compose exec ollama ollama pull hf.co/LiquidAI/LFM2-1.2B-RAG-GGUF:Q4_K_M`, which
 is idempotent — a fast no-op re-verifying the manifest/digest if the model is already present.
-Placed first among the post-startup provisioning steps in `init.sh` since it is the
-longest-running one on a truly fresh clone (~731MB download).
+Placed first among the post-startup provisioning steps in `start.sh` since it is the
+longest-running one on a truly fresh clone (~730MB download).
 
 ---
 
 ## Smoke Test
 
-`smoke_test.sh`'s `test_ollama_default_model` calls `lfm2.5-thinking-1.2b` through LiteLLM with a
-small `max_tokens` and asserts a non-empty `content`/`reasoning_content`. Every other model-backed
+`smoke_test.sh`'s `test_ollama_default_model` calls `lfm2-1.2b-rag` through LiteLLM with a
+small `max_tokens` and asserts a non-empty `content`. Every other model-backed
 test in the suite (`test_open_webui`, the Open WebUI RAG and web
 search tests) also runs against this same bundled model, now that `llama-server` has been
 removed — the whole suite is CPU-only and has no external hardware dependency.

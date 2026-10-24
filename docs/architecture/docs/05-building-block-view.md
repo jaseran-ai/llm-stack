@@ -40,7 +40,7 @@ The components are organized into six functional planes:
 * **`seaweedfs`**: Combined master, volume, and S3 server handling file uploads and exports via AWS SigV4 authentication.
 * **`qdrant`**: Vector database handling embeddings storage and similarity search for RAG.
 * **`redis`**: In-memory cache for Langfuse tasks and encrypted surrogate token store.
-* **`ollama`**: Local CPU inference engine hosting the default model (`lfm2.5-thinking:1.2b`).
+* **`ollama`**: Local CPU inference engine hosting the default model (`lfm2-1.2b-rag`).
 
 ### 6. Observability & Monitoring Plane
 * **`langfuse-web` & `langfuse-worker`**: Open-source LLMOps observability platform tracing prompts, latencies, token consumption, and evaluations.

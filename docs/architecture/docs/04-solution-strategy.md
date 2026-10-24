@@ -23,7 +23,7 @@ This section summarizes the fundamental architectural strategies and technology 
    Rather than simple irreversible masking (`[REDACTED]`), the platform implements reversible vaulted tokenization. Sensitive data is substituted with randomized surrogate tokens, while the cleartext-to-surrogate mapping is stored in Redis encrypted with AES-256-GCM.
 
 5. **Self-Contained Local Ingestion & Inference**:
-   The stack provides out-of-the-box local inference via Ollama (`lfm2.5-thinking:1.2b`), local S3 storage via SeaweedFS, and local vector indexing via Qdrant, guaranteeing functional independence from external vendors.
+   The stack provides out-of-the-box local inference via Ollama (`lfm2-1.2b-rag`), local S3 storage via SeaweedFS, and local vector indexing via Qdrant, guaranteeing functional independence from external vendors.
 
 ---
 

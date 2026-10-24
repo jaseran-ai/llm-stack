@@ -18,7 +18,7 @@ The architecture is governed by four immutable engineering principles:
 2. **Zero-Trust Security by Default**:
    Every layer assumes the network is hostile. Implicit trust between containers, unauthenticated endpoints, plain-text secret storage, and global TLS verification bypasses are categorically eliminated.
 3. **Single-Node Portability & Resource Efficiency**:
-   The stack is optimized to run autonomously on a single host (developer workstation, homelab server, or cloud VM) without external cloud dependencies. CPU-friendly inference models (`lfm2.5-thinking:1.2b` via Ollama) ensure zero-hardware-barrier out-of-the-box operation.
+   The stack is optimized to run autonomously on a single host (developer workstation, homelab server, or cloud VM) without external cloud dependencies. CPU-friendly inference models (`lfm2-1.2b-rag` via Ollama) ensure zero-hardware-barrier out-of-the-box operation.
 4. **Empirical Validation ("Prove It Works")**:
    No architectural or security mechanism is considered complete until validated by automated test suites (`./smoke_test.sh` 28/28 test suites, `make lint`, and `make trivy`).
 

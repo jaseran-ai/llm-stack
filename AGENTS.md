@@ -35,7 +35,7 @@ This document defines the authoritative, binding rules and governance for all AI
 
 8. **Lightness & Portability (Rule 8)**:
    - The stack is designed to run self-contained on a single machine (laptop, VM, homelab).
-   - CPU-friendly models (`lfm2.5-thinking:1.2b`) are prioritized for out-of-the-box operation without requiring GPU hardware.
+   - CPU-friendly models (`lfm2-1.2b-rag`) are prioritized for out-of-the-box operation without requiring GPU hardware.
 
 9. **GitOps-Native & Declarative Selection (Rule 9)**:
    - Only select components configured via mounted YAML/JSON/HCL files.

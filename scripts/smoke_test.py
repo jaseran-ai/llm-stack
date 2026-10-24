@@ -413,7 +413,7 @@ def test_open_webui():
     ow_headers = {'Authorization': f'Bearer {ow_token}'}
 
     r_chat = sess.post(f'https://chat.{domain}/api/chat/completions', headers=ow_headers, json={
-        'model': 'lfm2.5-thinking-1.2b',
+        'model': 'lfm2-1.2b-rag',
         'messages': [{'role': 'user', 'content': 'ping'}],
         'max_tokens': 20,
     }, timeout=120)
@@ -567,7 +567,7 @@ def test_ollama_default_model():
     assert litellm_master_key, "Missing LITELLM_MASTER_KEY in .env"
     headers = {'Authorization': f'Bearer {litellm_master_key}'}
     r = s.post(f'https://litellm.{domain}/v1/chat/completions', headers=headers, json={
-        'model': 'lfm2.5-thinking-1.2b',
+        'model': 'lfm2-1.2b-rag',
         'messages': [{'role': 'user', 'content': 'Say hi'}],
         'max_tokens': 20,
     }, timeout=120)
@@ -575,7 +575,7 @@ def test_ollama_default_model():
     message = r.json()['choices'][0]['message']
     text = (message.get('content') or '') + (message.get('reasoning_content') or '')
     assert text.strip(), "Ollama-backed completion returned no content or reasoning_content"
-    return "CPU-only default model (lfm2.5-thinking-1.2b via ollama) produced a real completion"
+    return "CPU-only default model (lfm2-1.2b-rag via ollama) produced a real completion"
 
 
 def test_open_webui_knowledge_rag():

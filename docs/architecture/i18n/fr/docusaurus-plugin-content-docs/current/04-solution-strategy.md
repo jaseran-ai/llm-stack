@@ -23,7 +23,7 @@ Cette section résume les stratégies d'architecture fondamentales et les choix 
    Plutôt qu'un masquage irréversible (`[REDACTED]`), la plateforme implémente une tokenisation réversible sécurisée. Les données sensibles sont substituées par des surrogate tokens aléatoires, tandis que la table de correspondance est conservée dans Redis chiffrée en AES-256-GCM.
 
 5. **Ingestion & Inférence locales et autonomes** :
-   La stack fournit une inférence locale sans dépendance externe via Ollama (`lfm2.5-thinking:1.2b`), un stockage objet S3 local via SeaweedFS et une indexation vectorielle locale avec Qdrant.
+   La stack fournit une inférence locale sans dépendance externe via Ollama (`lfm2-1.2b-rag`), un stockage objet S3 local via SeaweedFS et une indexation vectorielle locale avec Qdrant.
 
 ---
 

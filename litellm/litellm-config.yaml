@@ -6,25 +6,14 @@ include:
   - custom_models.yaml
 
 model_list:
-  # Below are aliases of the single Ollama model weight
-  # (lfm2.5-thinking:1.2b, pulled once by ollama/provision.sh) - no external GPU machine, no
+  # Below is the single Ollama model weight
+  # (LiquidAI/LFM2-1.2B-RAG, pulled by ollama/provision.sh) - no external GPU machine, no
   # separate physical hardware. See ollama/README.md.
-  - model_name: lfm2.5-thinking-1.2b
+  - model_name: lfm2-1.2b-rag
     litellm_params:
       # "ollama_chat/" is LiteLLM's recommended provider prefix for Ollama's native /api/chat endpoint
-      model: ollama_chat/lfm2.5-thinking:1.2b
+      model: ollama_chat/lfm2-1.2b-rag:latest
       api_base: http://ollama:11434
-    model_info:
-      # Ollama's native API returns the reasoning trace in a separate "thinking" field
-      # LiteLLM maps this to the OpenAI-style "reasoning_content" field on the response
-      supports_reasoning: true
-
-  - model_name: lfm2.5-thinking-1.2b-no-think
-    litellm_params:
-      model: ollama_chat/lfm2.5-thinking:1.2b
-      api_base: http://ollama:11434
-      # Ollama's native "think" request field (forwarded as-is by LiteLLM)
-      think: false
 
 litellm_settings: # module level litellm settings - https://github.com/BerriAI/litellm/blob/main/litellm/__init__.py
   drop_params: True
