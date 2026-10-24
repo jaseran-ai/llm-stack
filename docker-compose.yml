@@ -982,7 +982,7 @@ services:
 
   chouse-ui:
     logging: *default-logging
-    image: ghcr.io/daun-gatal/chouse-ui@sha256:90d6c2256b3837d804c1a7ea18e326d63b5e9285d7172e4d7289d75221592aa1 # v3.12.0
+    image: ghcr.io/daun-gatal/chouse-ui@sha256:b3d77756e2d11212e04adc0ce22f381e3116e8d54b143b4e5b4f12998cf42f7f # v3.12.0
     container_name: chouse-ui
     # Healthcheck: provided upstream in image Dockerfile (CMD-SHELL wget -q -T 5 --spider http://localhost:5521/api/health || exit 1)
     restart: unless-stopped
