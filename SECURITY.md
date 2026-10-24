@@ -44,7 +44,7 @@ If you discover a potential security vulnerability in `llm-stack`:
 
 1. **DO NOT report security vulnerabilities via public GitHub issues, discussions, or pull requests.**
 2. Report the vulnerability privately via **[GitHub Private Vulnerability Reporting](https://github.com/jaseran-ai/llm-stack/security/advisories/new)**.
-3. Alternatively, you may contact the maintainers directly by emailing: `security@jaseran.ai`.
+3. Alternatively, you may contact the maintainers directly by emailing: `contact@jaseran.ai`.
 
 ### What to Include in Your Report
 
