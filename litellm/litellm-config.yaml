@@ -44,6 +44,7 @@ guardrails:
     litellm_params:
       guardrail: "presidio"
       mode: "pre_call"
+      presidio_filter_scope: "input"
       default_on: true
       presidio_analyzer_api_base: "http://betterleaks:8080/"
       presidio_anonymizer_api_base: "http://betterleaks:8080/"
