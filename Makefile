@@ -50,12 +50,13 @@ gitleaks: ## Scan repository for hardcoded secrets using Gitleaks (Docker-native
 	fi
 
 .PHONY: actions-security
-actions-security: ## Audit GitHub Actions workflows (zizmor security audit + actionlint)
+actions-security: ## Audit GitHub Actions workflows (zizmor + actionlint); ZIZMOR_ONLINE=1 adds online audits
 	@docker run --rm -v "$$(pwd):/repo:ro" -w /repo $(ACTIONLINT_IMAGE) -no-color
-	@# GH_TOKEN (optional, read-only) enables zizmor's online audits (known-vulnerable
-	@# actions, impostor commits); without it only the offline audits run.
+	@# Offline by default so the result never depends on the GitHub API being reachable.
+	@# ZIZMOR_ONLINE=1 (with a read-only GH_TOKEN) adds the online audits: known-vulnerable
+	@# actions and impostor commits (run weekly by .github/workflows/security-scan.yml).
 	@docker run --rm -e GH_TOKEN -v "$$(pwd):/repo:ro" -w /repo $(ZIZMOR_IMAGE) \
-		--format plain $$( [ -n "$${GH_TOKEN:-}" ] || echo --offline ) .github
+		--format plain $(if $(filter 1,$(ZIZMOR_ONLINE)),,--offline) .github
 	@echo "GitHub Actions workflows: no actionlint or zizmor findings."
 
 .PHONY: github-harden
