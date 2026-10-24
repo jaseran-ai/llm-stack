@@ -244,11 +244,11 @@ def test_langfuse_ingestion(environment):
         raise RuntimeError('Langfuse S3 region or ClickHouse credential is missing')
 
     tls_mode = env_file.get('TLS_MODE')
-    if tls_mode not in ('internal', 'http-01', 'cloudflare-dns01'):
+    if tls_mode not in ('internal', 'custom', 'http-01', 'cloudflare-dns01'):
         raise RuntimeError('Unsupported Langfuse ingestion TLS mode')
     tls = ssl.create_default_context()
-    if tls_mode == 'internal':
-        ca_file = 'traefik/certs/tls.crt'
+    if tls_mode in ('internal', 'custom'):
+        ca_file = 'traefik/certs/ca.crt'
         if os.path.islink(ca_file) or not os.path.isfile(ca_file):
             raise RuntimeError('Internal TLS trust certificate is missing or unsafe')
         tls.load_verify_locations(cafile=ca_file)
@@ -521,9 +521,9 @@ def test_s3_api():
     if not bucket or not region:
         raise RuntimeError('Langfuse S3 bucket and region must be configured')
     tls_mode = env_file.get('TLS_MODE')
-    if tls_mode not in ('internal', 'http-01', 'cloudflare-dns01'):
+    if tls_mode not in ('internal', 'custom', 'http-01', 'cloudflare-dns01'):
         raise RuntimeError('TLS_MODE must select a supported S3 TLS trust policy')
-    tls_ca = 'traefik/certs/tls.crt' if tls_mode == 'internal' else None
+    tls_ca = 'traefik/certs/ca.crt' if tls_mode in ('internal', 'custom') else None
     detail = s3_smoke.probe(
         domain, bucket, region, 'vault/secrets_ram/s3.json', tls_ca=tls_ca,
     )
@@ -695,7 +695,7 @@ def test_loki_log_ingestion():
 # ------------------------------------------------------------------------------
 
 def test_vault():
-    vault_ca = 'traefik/certs/tls.crt'
+    vault_ca = 'traefik/certs/internal-ca.crt'
     vault_url = 'https://localhost:8201'
     r_sys = http_client.get(f'{vault_url}/v1/sys/health', timeout=DEFAULT_TIMEOUT, verify=vault_ca)
     assert r_sys.status_code == 200, f"Vault healthcheck HTTP {r_sys.status_code}"

@@ -31,6 +31,13 @@ Options:
                           Add missing Alice/Bob passwords to an existing .env only.
                           Does not hydrate templates or start containers.
   --enable-cloudflared    Activate optional Cloudflare Tunnel profile (alias for --dns-mode=cloudflare).
+  --tls-mode=MODE         Ingress TLS mode, persisted in .env: internal (default), custom,
+                          http-01 or cloudflare-dns01.
+                          internal: certificate signed by the stack's local CA.
+                          custom:   certificate signed by your own CA, installed from
+                                    traefik/certs/custom.crt (+ custom-ca.crt, your CA chain).
+  --tls-csr               Generate traefik/certs/custom.key and custom.csr (ECDSA P-256) to submit
+                          to your CA, without changing the certificate currently served.
   -h, --help              Show this help message and exit.
 
 Examples:
@@ -41,6 +48,7 @@ Examples:
   ./setup.sh --force-regen
   ./setup.sh --authentik-accounts-only
   ./setup.sh --enable-cloudflared
+  ./setup.sh --tls-mode=custom
 ========================================================================
 EOF
     exit 0
@@ -51,6 +59,8 @@ FORCE_REGEN=false
 AUTHENTIK_ACCOUNTS_ONLY=false
 DOMAIN_OVERRIDE=""
 DNS_MODE_OVERRIDE=""
+TLS_MODE_OVERRIDE=""
+TLS_CSR_REGEN=false
 for arg in "$@"; do
     case "$arg" in
         -h|--help)
@@ -70,6 +80,12 @@ for arg in "$@"; do
             ;;
         --enable-cloudflared)
             DNS_MODE_OVERRIDE="cloudflare"
+            ;;
+        --tls-mode=*)
+            TLS_MODE_OVERRIDE="${arg#--tls-mode=}"
+            ;;
+        --tls-csr)
+            TLS_CSR_REGEN=true
             ;;
     esac
 done
@@ -418,6 +434,14 @@ if [ "$AUTHENTIK_ACCOUNTS_ONLY" = true ]; then
     exit 0
 fi
 
+# Validate --tls-mode before .env is written; a fresh .env picks it up through ${TLS_MODE}.
+if [ -n "$TLS_MODE_OVERRIDE" ]; then
+    case "$TLS_MODE_OVERRIDE" in
+        internal|custom|http-01|cloudflare-dns01) TLS_MODE="$TLS_MODE_OVERRIDE" ;;
+        *) echo "ERROR: --tls-mode must be internal, custom, http-01 or cloudflare-dns01." >&2; exit 1 ;;
+    esac
+fi
+
 # 2. Decide what to do about .env: generate, keep, or regenerate with confirmation
 if [ ! -f .env ]; then
     generate_env
@@ -446,6 +470,14 @@ else
     echo "Existing .env file detected (non-interactive mode, no --force-regen): keeping it as-is."
     add_missing_secrets
     source .env
+fi
+
+# An explicit --tls-mode also applies to an existing .env (e.g. switching to a certificate
+# signed by your own CA after a first install with the internal CA).
+if [ -n "$TLS_MODE_OVERRIDE" ] && [ "$(grep -m1 '^TLS_MODE=' .env | cut -d= -f2-)" != "$TLS_MODE_OVERRIDE" ]; then
+    sed -i "s/^TLS_MODE=.*/TLS_MODE=${TLS_MODE_OVERRIDE}/" .env
+    TLS_MODE="$TLS_MODE_OVERRIDE"
+    echo "TLS mode set to ${TLS_MODE} in .env."
 fi
 
 if [ -f .env ]; then
@@ -483,35 +515,6 @@ with open(dest_path, 'w') as f:
 " "$tpl" "$dest" "$var_name" "$var_value"
 }
 
-ensure_internal_tls_certificate() {
-    [ "${TLS_MODE}" = "internal" ] || return 0
-
-    local cert_file="traefik/certs/tls.crt"
-    local key_file="traefik/certs/tls.key"
-    mkdir -p traefik/certs
-
-    if [ -f "$cert_file" ] && [ -f "$key_file" ]; then
-        echo "Preserving the existing internal TLS certificate."
-        return 0
-    fi
-    if [ -e "$cert_file" ] || [ -e "$key_file" ]; then
-        echo "ERROR: Internal TLS certificate and key must either both exist or both be absent." >&2
-        exit 1
-    fi
-
-    echo "Generating an internal wildcard TLS certificate for ${DOMAIN}..."
-    openssl req -x509 -nodes -newkey rsa:2048 -sha256 -days 825 \
-        -keyout "$key_file" \
-        -out "$cert_file" \
-        -subj "/CN=*.${DOMAIN}" \
-        -addext "subjectAltName=DNS:${DOMAIN},DNS:*.${DOMAIN},DNS:vault,DNS:localhost,IP:127.0.0.1" \
-        -addext "basicConstraints=critical,CA:TRUE" \
-        -addext "keyUsage=critical,digitalSignature,keyEncipherment,keyCertSign" \
-        >/dev/null 2>&1
-    chmod 644 "$key_file"
-    chmod 644 "$cert_file"
-}
-
 # 4bis. Prepare the Prometheus runtime configuration template.
 echo "Preparing the Prometheus runtime configuration template (prometheus/prometheus.yml)..."
 mkdir -p prometheus/targets.d
@@ -538,7 +541,14 @@ with open('coredns/Corefile', 'w') as f:
 " "$DOMAIN" "$escaped_domain" "$LAN_IP"
 
 # 4quater. Hydrate traefik configuration (traefik/traefik.yml & traefik/dynamic.yml)
-ensure_internal_tls_certificate
+# TLS material: internal CA, Vault listener certificate and ingress certificate (see the script).
+# Exit code 2 means a custom-mode CSR is waiting to be signed by your CA.
+tls_status=0
+DOMAIN="$DOMAIN" TLS_MODE="$TLS_MODE" TLS_CSR_REGEN="$TLS_CSR_REGEN" \
+    bash "$REPO_DIR/traefik/scripts/certs.sh" || tls_status=$?
+if [ "$tls_status" -ne 0 ]; then
+    exit "$tls_status"
+fi
 python3 "$REPO_DIR/traefik/scripts/hydrate_traefik.py"
 
 # 4quinquies. Generate a ready-to-use systemd unit file

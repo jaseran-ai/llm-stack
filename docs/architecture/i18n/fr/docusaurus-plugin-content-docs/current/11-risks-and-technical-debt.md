@@ -30,8 +30,8 @@ La stack s'exécute sur un seul hôte Docker. Il n'y a pas de haute disponibilit
 ### 2. Accès au socket Docker
 Traefik, Vector et Dozzle montent `/var/run/docker.sock` en lecture seule pour la découverte de services et la collecte des logs. Un accès en lecture seule à l'API Docker expose tout de même les métadonnées et variables d'environnement des conteneurs ; ces services doivent rester derrière le Forward-Auth et ne jamais être exposés directement.
 
-### 3. Autorité de certification interne auto-signée
-En `TLS_MODE=internal`, les clients doivent faire confiance à l'AC racine générée localement. Elle est générée à chaque installation par `setup.sh` et n'est jamais versionnée.
+### 3. Autorité de certification interne
+En `TLS_MODE=internal`, les clients doivent faire confiance à l'AC racine générée localement (`traefik/certs/internal-ca.crt`). Elle est générée à chaque installation par `setup.sh` et n'est jamais versionnée. `TLS_MODE=custom` sert à la place un certificat émis par l'AC de l'opérateur ; Vault conserve toujours son certificat issu de l'AC interne.
 
 ### 4. Images maintenues par la communauté
-Quelques composants optionnels sont publiés par des mainteneurs individuels plutôt que par le projet amont. Ils sont épinglés par digest et analysés par Trivy, mais reçoivent les correctifs de sécurité au rythme de leur mainteneur.
+Quelques composants (par exemple l'image CHouse UI) sont publiés par des mainteneurs individuels plutôt que par le projet amont. Ils sont épinglés par digest et analysés par Trivy, mais reçoivent les correctifs de sécurité au rythme de leur mainteneur.

@@ -39,11 +39,11 @@ Cette section décrit les patrons d'architecture universels et les concepts tran
 
 ## 8.4 PKI Interne & Modèle de Confiance des Certificats
 
-* **Autorité de Certification (CA) Interne Auto-signée** :
-  - Générée lors du `setup.sh` avec une validité de 10 ans.
-  - Les noms alternatifs (SAN) couvrent `*.${DOMAIN}`, `${DOMAIN}`, `DNS:vault`, `DNS:localhost` et `IP:127.0.0.1`.
+* **Deux chaînes de confiance** (générées par `traefik/scripts/certs.sh` lors du `setup.sh`) :
+  - **AC interne** (`internal-ca.crt`, validité 10 ans) : signe le certificat du listener Vault (`DNS:vault`, `DNS:localhost`, `IP:127.0.0.1`) dans tous les modes TLS.
+  - **Chaîne d'entrée** (`tls.crt` + `ca.crt`) : certificat de `${DOMAIN}` et `*.${DOMAIN}` servi par Traefik, signé par l'AC interne (`TLS_MODE=internal`) ou par l'AC de l'opérateur à partir d'un CSR généré (`TLS_MODE=custom`).
 * **Injection dans les Magasins de Confiance** :
-  - Le certificat CA local (`traefik/certs/tls.crt`) est monté dans `/etc/ssl/certs/local-ca.crt:ro`.
+  - La chaîne de l'AC d'entrée (`traefik/certs/ca.crt`) est montée dans `/etc/ssl/certs/local-ca.crt:ro` ; Vault, Vault Agent et le `vault-transport` de Traefik font confiance à l'AC interne.
   - Les applications Node.js reçoivent `NODE_EXTRA_CA_CERTS: "/etc/ssl/certs/local-ca.crt"`, ajoutant l'autorité locale aux racines Mozilla sans les écraser.
   - Les flags d'insécurité globale (`NODE_TLS_REJECT_UNAUTHORIZED: "0"`, `PYTHONHTTPSVERIFY: "0"`) sont éliminés.
 

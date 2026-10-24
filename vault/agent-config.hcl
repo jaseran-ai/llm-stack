@@ -2,7 +2,7 @@ pid_file = "/tmp/vault-agent.pid"
 
 vault {
   address = "https://vault:8200"
-  ca_cert = "/etc/vault/certs/tls.crt"
+  ca_cert = "/etc/vault/certs/internal-ca.crt"
 }
 
 auto_auth {

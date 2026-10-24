@@ -120,7 +120,7 @@ class LangfuseIngestionSmokeTests(unittest.TestCase):
         self.assertIn('ClickHouse trace 1', detail)
         self.assertEqual(self.client.s3_gets, 1)
         self.assertEqual(self.client.event['type'], 'trace-create')
-        tls.return_value.load_verify_locations.assert_called_once_with(cafile='traefik/certs/tls.crt')
+        tls.return_value.load_verify_locations.assert_called_once_with(cafile='traefik/certs/ca.crt')
         ch_get.assert_called_once()
 
     def test_ingestion_rejection_stops_before_s3(self):
@@ -145,7 +145,7 @@ class LangfuseIngestionSmokeTests(unittest.TestCase):
         detail, tls, ch_get = self.run_probe(environment='production')
         self.assertIn('PRODUCTION ingestion HTTP 207', detail)
         self.assertEqual(self.client.event['body']['name'], 'llm-stack-production-ingestion-smoke')
-        tls.return_value.load_verify_locations.assert_called_once_with(cafile='traefik/certs/tls.crt')
+        tls.return_value.load_verify_locations.assert_called_once_with(cafile='traefik/certs/ca.crt')
         ch_get.assert_called_once()
 
     def test_production_probe_uses_system_trust_for_public_tls(self):

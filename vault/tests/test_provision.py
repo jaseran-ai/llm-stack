@@ -41,15 +41,33 @@ class VaultOidcTests(unittest.TestCase):
         with mock.patch.object(MODULE, "read_env", return_value={"TLS_MODE": "internal", "DOMAIN": "example.test"}), \
              mock.patch.object(MODULE.os.path, "exists", return_value=False), \
              mock.patch.object(MODULE.http_client, "get", return_value=Response(payload={"oidc/": {}})):
-            with self.assertRaisesRegex(RuntimeError, "internal TLS requires"):
+            with self.assertRaisesRegex(RuntimeError, "internal and custom TLS require"):
                 MODULE.setup_oidc("test-token")
+
+    def test_custom_tls_requires_ca(self):
+        with mock.patch.object(MODULE, "read_env", return_value={"TLS_MODE": "custom", "DOMAIN": "example.test"}), \
+             mock.patch.object(MODULE.os.path, "exists", return_value=False), \
+             mock.patch.object(MODULE.http_client, "get", return_value=Response(payload={"oidc/": {}})):
+            with self.assertRaisesRegex(RuntimeError, "internal and custom TLS require"):
+                MODULE.setup_oidc("test-token")
+
+    def test_acme_tls_sends_no_ca(self):
+        fake_http = mock.Mock()
+        fake_http.get.return_value = Response(payload={"oidc/": {}})
+        fake_http.post.return_value = Response(status_code=204)
+        with mock.patch.object(MODULE, "read_env", return_value={"TLS_MODE": "http-01", "DOMAIN": "example.test"}), \
+             mock.patch.object(MODULE.os.path, "exists", return_value=True), \
+             mock.patch("builtins.open", mock.mock_open(read_data="TEST CA")), \
+             mock.patch.object(MODULE, "http_client", fake_http):
+            MODULE.setup_oidc("test-token")
+        self.assertFalse(fake_http.post.call_args_list[0].kwargs["json"].get("oidc_discovery_ca_pem"))
 
     def test_vault_rejection_is_fatal(self):
         fake_http = mock.Mock()
         fake_http.get.return_value = Response(payload={"oidc/": {}})
         fake_http.post.return_value = Response(status_code=400, text="discovery failed")
         with mock.patch.object(MODULE, "read_env", return_value={"TLS_MODE": "internal", "DOMAIN": "example.test"}), \
-             mock.patch.object(MODULE.os.path, "exists", side_effect=lambda path: path == "traefik/certs/tls.crt"), \
+             mock.patch.object(MODULE.os.path, "exists", side_effect=lambda path: path == "traefik/certs/ca.crt"), \
              mock.patch("builtins.open", mock.mock_open(read_data="TEST CA")), \
              mock.patch.object(MODULE, "http_client", fake_http):
             with self.assertRaisesRegex(RuntimeError, "OIDC config failed"):
@@ -60,7 +78,7 @@ class VaultOidcTests(unittest.TestCase):
         fake_http.get.return_value = Response(payload={"oidc/": {}})
         fake_http.post.return_value = Response(status_code=204)
         with mock.patch.object(MODULE, "read_env", return_value={"TLS_MODE": "internal", "DOMAIN": "example.test"}), \
-             mock.patch.object(MODULE.os.path, "exists", side_effect=lambda path: path == "traefik/certs/tls.crt"), \
+             mock.patch.object(MODULE.os.path, "exists", side_effect=lambda path: path == "traefik/certs/ca.crt"), \
              mock.patch("builtins.open", mock.mock_open(read_data="TEST CA")), \
              mock.patch.object(MODULE, "http_client", fake_http):
             MODULE.setup_oidc("test-token")

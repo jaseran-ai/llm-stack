@@ -19,7 +19,7 @@ import http_client
 VAULT_URL = os.environ.get("VAULT_URL", "https://localhost:8201")
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 if "SSL_CERT_FILE" not in os.environ:
-    _ca_file = os.path.join(REPO_ROOT, "traefik", "certs", "tls.crt")
+    _ca_file = os.path.join(REPO_ROOT, "traefik", "certs", "trust.crt")
     if os.path.exists(_ca_file):
         os.environ["SSL_CERT_FILE"] = _ca_file
 KEYS_FILE = ".vault_keys.json"
@@ -221,6 +221,9 @@ def init_and_unseal():
         print("[Vault] Initializing Vault...")
         r_init = http_client.post(f"{VAULT_URL}/v1/sys/init", json={"secret_shares": 1, "secret_threshold": 1})
         keys_data = r_init.json()
+        if r_init.status_code != 200 or not keys_data.get('keys'):
+            print(f"[Vault] Error: initialization failed (HTTP {r_init.status_code}): {keys_data.get('errors')}")
+            sys.exit(1)
         with open(KEYS_FILE, 'w') as f:
             json.dump(keys_data, f, indent=2)
         os.chmod(KEYS_FILE, 0o600)
@@ -451,12 +454,13 @@ def setup_oidc(root_token):
         print("[Vault] Enabling OIDC auth method at auth/oidc...")
         http_client.post(f"{VAULT_URL}/v1/sys/auth/oidc", headers=headers, json={"type": "oidc"})
 
-    # 2. Get TLS CA certificate for local Ingress (Traefik)
+    # 2. Get the CA chain Vault must trust to reach Authentik through Traefik (ingress CA:
+    # the internal CA, or your own CA in custom mode; ACME modes use the system trust store).
     ca_pem = ""
     ca_paths = [
-        "traefik/certs/tls.crt",
-        "/etc/traefik/certs/tls.crt"
-    ]
+        "traefik/certs/ca.crt",
+        "/etc/traefik/certs/ca.crt"
+    ] if env.get('TLS_MODE', 'internal') in ('internal', 'custom') else []
     for p in ca_paths:
         if os.path.exists(p):
             try:
@@ -465,9 +469,9 @@ def setup_oidc(root_token):
                 break
             except Exception:
                 pass
-    if env.get('TLS_MODE', 'internal') == 'internal' and not ca_pem:
+    if env.get('TLS_MODE', 'internal') in ('internal', 'custom') and not ca_pem:
         raise RuntimeError(
-            "internal TLS requires traefik/certs/tls.crt for OIDC discovery validation"
+            "internal and custom TLS require traefik/certs/ca.crt for OIDC discovery validation"
         )
 
     # 3. Configure OIDC method against Authentik

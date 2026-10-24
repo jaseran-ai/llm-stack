@@ -13,8 +13,7 @@ This document lists planned work for LLM Stack. Shipped changes are tracked in [
 
 ## Planned
 
-- [ ] **Text-to-speech in Open WebUI**: add a local neural text-to-speech backend for Open WebUI.
-- [ ] **Speech-to-text**: add a local, CPU-friendly transcription backend for Open WebUI voice input.
+- [ ] **Local voice services**: speech-to-text and text-to-speech backends for Open WebUI.
 
 ---
 

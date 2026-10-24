@@ -30,8 +30,8 @@ The stack runs on a single Docker host. There is no high availability: a host fa
 ### 2. Docker Socket Access
 Traefik, Vector and Dozzle mount `/var/run/docker.sock` read-only for service discovery and log collection. Read-only access to the Docker API still exposes container metadata and environment variables; these services must stay behind Forward-Auth and must not be exposed directly.
 
-### 3. Self-Signed Internal Certificate Authority
-In `TLS_MODE=internal`, clients must trust the locally generated root CA. It is generated per installation by `setup.sh` and is never committed.
+### 3. Internal Certificate Authority
+In `TLS_MODE=internal`, clients must trust the locally generated root CA (`traefik/certs/internal-ca.crt`). It is generated per installation by `setup.sh` and is never committed. `TLS_MODE=custom` serves a certificate from the operator's own CA instead; Vault always keeps its certificate from the internal CA.
 
 ### 4. Community-Maintained Images
-A few optional components are published by individual maintainers rather than by the upstream project. They are pinned by digest and scanned by Trivy, but receive security updates on the maintainer's schedule.
+A few components (for example the CHouse UI image) are published by individual maintainers rather than by the upstream project. They are pinned by digest and scanned by Trivy, but receive security updates on the maintainer's schedule.

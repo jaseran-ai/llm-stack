@@ -34,8 +34,8 @@ A centralized, encrypted secrets management vault integrated as a first-class se
 
 ### 3. TLS Certificate Verification for Internal OIDC Discovery (`oidc_discovery_ca_pem`)
 * **Symptom**: `Config Status: 400 error checking oidc discovery URL`.
-* **Subtlety**: When Vault queries Authentik's OpenID Discovery endpoint (`https://authentik.${DOMAIN}/application/o/vault/`), Vault executes an internal HTTPS request from inside the container. In `TLS_MODE=internal`, Vault's internal Go HTTP client rejects an untrusted certificate unless the local certificate is explicitly supplied as a trust anchor.
-* **Fix**: [`setup.sh`](../setup.sh) generates and preserves `traefik/certs/tls.crt`, and [`vault/scripts/provision.py`](scripts/provision.py) passes it into Vault's OIDC configuration via `oidc_discovery_ca_pem`. Provisioning fails closed if the certificate is missing or Vault rejects the discovery configuration:
+* **Subtlety**: When Vault queries Authentik's OpenID Discovery endpoint (`https://authentik.${DOMAIN}/application/o/vault/`), Vault executes an internal HTTPS request from inside the container. In `TLS_MODE=internal` or `custom`, Vault's internal Go HTTP client rejects the ingress certificate unless its CA chain is explicitly supplied as a trust anchor. Vault's own listener uses a separate certificate from the internal CA (`traefik/certs/vault.crt`).
+* **Fix**: [`setup.sh`](../setup.sh) writes the ingress CA chain to `traefik/certs/ca.crt` (the internal CA, or your own CA in `TLS_MODE=custom`), and [`vault/scripts/provision.py`](scripts/provision.py) passes it into Vault's OIDC configuration via `oidc_discovery_ca_pem`. Provisioning fails closed if the certificate is missing or Vault rejects the discovery configuration:
   ```python
   config_payload = {
       "oidc_discovery_url": f"https://authentik.{domain}/application/o/vault/",

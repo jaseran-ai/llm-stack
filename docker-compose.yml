@@ -111,7 +111,7 @@ services:
     # external hardware dependency at all (it used to depend on "llama-server", a GPU backend
     # on a separate physical machine; that dependency has been fully removed).
     ports:
-      - "127.0.0.1:11434:11434"
+      - "127.0.0.1:${OLLAMA_WEBAPI_PORT}:11434"
     volumes:
       - ollama_data:/root/.ollama
     healthcheck:
@@ -279,7 +279,7 @@ services:
     command: ["server", "-config=/etc/vault/config.hcl"]
     environment:
       - VAULT_ADDR=https://127.0.0.1:8200
-      - VAULT_CACERT=/etc/vault/certs/tls.crt
+      - VAULT_CACERT=/etc/vault/certs/internal-ca.crt
     volumes:
       - ./vault/config.hcl:/etc/vault/config.hcl:ro
       - ./traefik/certs:/etc/vault/certs:ro
@@ -287,7 +287,7 @@ services:
     ports:
       - 127.0.0.1:8201:8200
     healthcheck:
-      test: ["CMD", "vault", "status", "-ca-cert=/etc/vault/certs/tls.crt"]
+      test: ["CMD", "vault", "status", "-ca-cert=/etc/vault/certs/internal-ca.crt"]
       interval: 2s
       timeout: 2s
       retries: 10
@@ -315,7 +315,7 @@ services:
       - IPC_LOCK
     environment:
       - VAULT_ADDR=https://vault:8200
-      - VAULT_CACERT=/etc/vault/certs/tls.crt
+      - VAULT_CACERT=/etc/vault/certs/internal-ca.crt
     command: ["vault", "agent", "-config=/etc/vault/agent-config.hcl"]
     volumes:
       - ./vault/agent-config.hcl:/etc/vault/agent-config.hcl:ro
@@ -414,7 +414,7 @@ services:
     env_file:
       - ./vault/secrets_ram/langfuse.env
     volumes:
-      - ./traefik/certs/tls.crt:/etc/ssl/certs/local-ca.crt:ro
+      - ./traefik/certs/ca.crt:/etc/ssl/certs/local-ca.crt:ro
     depends_on: *langfuse-depends-on
     labels:
       - "traefik.enable=true"
@@ -991,7 +991,7 @@ services:
     env_file:
       - ./vault/secrets_ram/chouse-ui.env
     volumes:
-      - ./traefik/certs/tls.crt:/etc/ssl/certs/local-ca.crt:ro
+      - ./traefik/certs/ca.crt:/etc/ssl/certs/local-ca.crt:ro
     environment:
       PORT: "5521"
       CLICKHOUSE_DEFAULT_URL: "http://clickhouse:8123"

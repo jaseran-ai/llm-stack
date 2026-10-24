@@ -2,7 +2,7 @@
 """Hydrate Traefik static and dynamic configuration files from templates.
 
 Reads .env / environment variables to generate traefik/traefik.yml and traefik/dynamic.yml
-supporting three TLS modes (internal, http-01, cloudflare-dns01).
+supporting four TLS modes (internal, custom, http-01, cloudflare-dns01).
 """
 
 import os
@@ -52,8 +52,8 @@ certificatesResolvers:
           - "1.1.1.1:53"
           - "8.8.8.8:53"
 """
-    elif tls_mode == 'internal':
-        # Default self-signed local certs generated dynamically by Traefik
+    elif tls_mode in ('internal', 'custom'):
+        # Static certificate from traefik/certs/tls.crt (internal CA or your own CA, see setup.sh)
         cert_resolvers = ""
 
     with open('traefik/traefik.yml.template') as f:

@@ -68,7 +68,7 @@ SMOKE_ENVIRONMENT=production SMOKE_PROD_LANGFUSE_INGESTION=1 ./smoke_test.sh LAN
 
 This creates one uniquely named synthetic production trace; it does not delete
 or alter existing traces. The probe verifies both public system trust and the
-internal Traefik CA when `TLS_MODE=internal`, without disabling certificate or
+ingress CA chain (`traefik/certs/ca.crt`) when `TLS_MODE` is `internal` or `custom`, without disabling certificate or
 hostname verification. It checks the configured legacy ingestion path, not
 historical event recovery. Migrating LiteLLM to Langfuse's OTel callback
 requires a separate CAB and regression test.

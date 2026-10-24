@@ -36,3 +36,10 @@ Option choisie : **Injection ciblée de l'autorité locale**, avec activation du
 ### Conséquences Négatives
 
 * Nécessite le montage du certificat CA local en lecture seule dans les conteneurs Node.js.
+
+## Mise à jour : séparation des chaînes de confiance d'entrée et interne
+
+Le certificat auto-signé unique (`tls.crt`, utilisé à la fois comme certificat serveur et comme ancre de confiance) a été remplacé par deux chaînes, afin que l'opérateur puisse servir un certificat émis par sa propre AC sans lui exposer de noms internes :
+
+* **AC interne** (`internal-ca.crt`), toujours générée, signe le certificat du listener Vault (`vault`, `localhost`, `127.0.0.1`). Vault, Vault Agent et le `vault-transport` de Traefik lui font confiance.
+* **Chaîne d'entrée** (`tls.crt` + `ca.crt`) pour `${DOMAIN}` et `*.${DOMAIN}` : signée par l'AC interne (`TLS_MODE=internal`) ou par l'AC de l'opérateur à partir d'un CSR généré par `./setup.sh --tls-csr` (`TLS_MODE=custom`). `ca.crt` est l'ancre injectée dans les runtimes Node.js et dans la découverte OIDC de Vault.

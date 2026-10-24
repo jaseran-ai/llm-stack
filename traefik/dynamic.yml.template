@@ -12,8 +12,9 @@ http:
   serversTransports:
     vault-transport:
       serverName: "vault"
+      # Vault's listener certificate is issued by the stack's internal CA (setup.sh).
       rootCAs:
-        - "/etc/traefik/certs/tls.crt"
+        - "/etc/traefik/certs/internal-ca.crt"
 
   middlewares:
     authentik-auth:

@@ -120,11 +120,11 @@ Authentik configurations are provisioned entirely via declarative YAML blueprint
 
 ### 3.4 Internal TLS & Local CA Trust Plane
 - **Encrypted Internal Listener**: HashiCorp Vault operates an internal TLS listener (`tls_disable = 0`) using local certificates generated during `setup.sh`.
-- **Full SAN Coverage**: The stack's internal Certificate Authority signs Subject Alternative Names covering `DNS:vault`, `DNS:localhost`, `IP:127.0.0.1`, and wildcard domain routes (`*.${DOMAIN}`).
+- **Split Trust Chains**: The stack's internal CA signs the Vault listener certificate (`DNS:vault`, `DNS:localhost`, `IP:127.0.0.1`); the ingress certificate (`${DOMAIN}`, `*.${DOMAIN}`) is signed by the internal CA (`TLS_MODE=internal`) or by the operator's CA from a CSR (`TLS_MODE=custom`).
 - **Elimination of Global Bypass Flags**:
   - Global insecure flags (`NODE_TLS_REJECT_UNAUTHORIZED: "0"`, `PYTHONHTTPSVERIFY: "0"`, `SSL_VERIFY: "false"`) are strictly banned.
-  - Node.js services (`langfuse-web`, `chouse-ui`) ingest the local root CA via `NODE_EXTRA_CA_CERTS: "/etc/ssl/certs/local-ca.crt"`, validating internal OIDC discovery while preserving public CA verification for external APIs.
-  - Traefik verifies upstream Vault TLS via `serversTransport` rootCA anchors (`/etc/traefik/certs/tls.crt`).
+  - Node.js services (`langfuse-web`, `chouse-ui`) ingest the ingress CA chain (`traefik/certs/ca.crt`) via `NODE_EXTRA_CA_CERTS: "/etc/ssl/certs/local-ca.crt"`, validating internal OIDC discovery while preserving public CA verification for external APIs.
+  - Traefik verifies upstream Vault TLS via `serversTransport` rootCA anchors (`/etc/traefik/certs/internal-ca.crt`).
 
 ### 3.5 Storage Plane & Least-Privilege IAM
 - **PostgreSQL 18 Isolation**: Relational schemas for Authentik, LiteLLM, Langfuse, and CHouse UI run within isolated PostgreSQL databases provisioned at bootstrap (`init-dbs.sql`).
