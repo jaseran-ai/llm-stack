@@ -81,7 +81,7 @@ literal image reference too, not an environment variable, so Dependabot can actu
 
 ## Project Principles
 
-This project follows the governance rules defined in [`.gemini/rules.md`](.gemini/rules.md).
+This project follows the governance rules defined in [`AGENTS.md`](AGENTS.md).
 In short:
 
 - **No unilateral structural changes** — significant changes (network, security, schemas,
