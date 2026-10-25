@@ -47,7 +47,8 @@ shown above.
 
 CI runs on GitHub-hosted runners only (`ubuntu-24.04`); every tool comes from a digest-pinned image
 declared in the `Makefile`. Changes reach `main` through pull requests that pass every CI check
-(see the ruleset in [`.github/rulesets/main.json`](.github/rulesets/main.json)).
+(see the ruleset in [`.github/rulesets/main.json`](.github/rulesets/main.json)). Pull requests
+are merged with **rebase** only, which keeps each commit's original author.
 
 You can run the same checks locally before pushing:
 
