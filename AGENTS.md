@@ -1,6 +1,12 @@
 # AI Agent Rules & Operational Guidelines — `llm-stack`
 
-This document defines the authoritative, binding rules and governance for all AI assistants (Antigravity/Gemini, Claude Code, OpenCode, Cursor, and automated agents) working in this repository.
+This document is the single source of the authoritative, binding rules and governance for every AI assistant and automated agent working in this repository. Keep all agent instructions here; tool-specific files only point to this one:
+
+| Tool | How it loads these rules |
+| :--- | :--- |
+| Cursor, OpenCode, Codex and other `AGENTS.md`-aware agents | Read `AGENTS.md` natively |
+| Claude Code | `CLAUDE.md` imports it (`@AGENTS.md`) |
+| Gemini CLI | `.gemini/settings.json` sets `context.fileName` to `AGENTS.md` |
 
 ---
 
@@ -8,11 +14,12 @@ This document defines the authoritative, binding rules and governance for all AI
 
 1. **Prior Consultation & Approval (Rule 1)**:
    - NEVER make unilateral architectural, networking, database schema, or security changes.
-   - Always present a clear diagnostic and plan, and wait for explicit user confirmation before proceeding.
+   - Always present a clear diagnostic, the facts, and the technical options with their impact, then wait for explicit user confirmation before proceeding.
 
 2. **Absolute Reproducibility as Code (Rule 2)**:
    - The entire stack must be 100% reproducible from a clean clone via `./setup.sh`.
    - NO manual GUI clicks, uncommitted DB edits, or opaque manual fixes. Everything belongs in versioned templates, scripts, or `docker-compose.yml`.
+   - NO live patching of any kind: no monkey-patching, no manual SQL against a running database, no direct edits inside a running container.
 
 3. **Automated Empirical Validation — "Prove It Works" (Rule 3)**:
    - A task is NEVER done based on intent or assumption alone.
@@ -20,25 +27,33 @@ This document defines the authoritative, binding rules and governance for all AI
 
 4. **Strict Preservation of Data & Volumes (Rule 4)**:
    - NEVER run `docker compose down -v`, `rm -rf` on data directories, or destructive database commands without explicit user instruction.
+   - When a test needs a clean state, use an isolated Docker Compose project with dedicated test volumes (see `uat/`) instead of the live stack.
 
 5. **Zero Hardcoded Secrets & Zero Fallback Defaults (Rule 5)**:
    - NEVER use fallback syntax in `docker-compose.yml` (e.g. `${MY_SECRET:-default}` is FORBIDDEN; use bare `${MY_SECRET}`).
    - Secrets are generated dynamically in `setup.sh` (`openssl rand -hex 32`), stored in Vault KV v2, and rendered into memory-backed tmpfs (`vault/secrets_ram/`).
 
 6. **End-to-End Architectural Integrity & Unified SSO (Rule 6)**:
+   - Never treat a symptom in isolation or address it partially: every change covers the whole chain, i.e. centralized security and authentication, provisioning and configuration as code, monitoring and observability, and automated tests.
    - Authentik is the single source of truth for identity and access.
    - New services must use either **Pattern A (Forward-Auth)** or **Pattern B (Native OIDC)** via declarative YAML blueprints in `authentik/blueprints/`.
    - Application tiles must be registered in the Authentik dashboard with verified CDN icons (`https://cdn.jsdelivr.net/gh/selfhst/icons/png/<name>.png`).
 
 7. **Component Sustainability & Registry Pinning (Rule 7)**:
-   - NEVER use `:latest` image tags. Always query container registries to pin the exact, latest stable version tag or digest.
+   - NEVER introduce an obsolete, deprecated, or unmaintained component, and NEVER use `:latest` or other floating tags.
+   - Before proposing or changing an image, query the registry API (Docker Hub, GHCR, Quay, ...) and pin the exact latest stable version tag and its digest.
 
 8. **Lightness & Portability (Rule 8)**:
-   - The stack is designed to run self-contained on a single machine (laptop, VM, homelab).
+   - The stack is designed to run self-contained on a single machine (laptop, VM, homelab). Between two options of otherwise comparable merit, always favor the lighter, more portable one.
    - CPU-friendly models (`lfm2-1.2b-rag`) are prioritized for out-of-the-box operation without requiring GPU hardware.
+   - Before recommending an image, dependency, or architecture for being lighter, measure and report its real uncompressed size (`docker image inspect --format '{{.Size}}'`); a "slim" label is not proof.
+   - Flag explicitly as a portability regression any size gain that costs self-containment (an external hardware or service dependency, or network access at runtime to fetch models or weights).
 
 9. **GitOps-Native & Declarative Selection (Rule 9)**:
-   - Only select components configured via mounted YAML/JSON/HCL files.
+   - Only select components configured via mounted YAML/JSON/HCL files. Before proposing a new tool, check that it is:
+     1. fully declarative through native configuration files, without custom database seeding workarounds;
+     2. compatible with the existing PostgreSQL instance, or stateless;
+     3. free of GUI-first setup wizards.
    - All services must be registered in Gatus GitOps monitoring (`gatus/config.yaml.template`).
 
 10. **Zero-Assumption Versioning & Up-to-Date Official Documentation (Rule 10)**:
@@ -103,4 +118,6 @@ To allow developers to customize their stack without leaking private configurati
 
 - **Language**: All public documentation, code comments, and scripts must be in **English** (enforced by `make no-french` in CI).
 - **Commit Format**: Follow [Conventional Commits](https://www.conventionalcommits.org/) (`feat:`, `fix:`, `docs:`, `refactor:`, `chore:`).
+- **No AI Attribution**: Commits and pull requests carry no AI-assistant attribution (no `Co-Authored-By` trailer for an assistant, no "Generated with ..." footer).
+- **Merging**: Changes reach `main` only through pull requests merged with **rebase** (enforced by the ruleset), which keeps each commit's original author.
 - **Documentation Integrity**: Keep `README.md`, `ADDING_AN_APPLICATION.md`, and service READMEs up to date with all architectural changes.
