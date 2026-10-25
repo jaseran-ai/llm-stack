@@ -138,8 +138,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      # Offline audits only: a required check must not depend on the GitHub API being
+      # reachable. The online audits run weekly in security-scan.yml.
       - name: Audit workflows with actionlint and zizmor
-        env:
-          # Read-only job token: enables zizmor's online audits (known-vulnerable actions).
-          GH_TOKEN: ${{ github.token }}
         run: make actions-security

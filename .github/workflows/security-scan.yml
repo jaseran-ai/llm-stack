@@ -19,6 +19,25 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # zizmor's online audits (known-vulnerable actions, impostor commits), kept out of the
+  # required CI checks because they depend on the GitHub API being reachable.
+  actions-security-online:
+    name: GitHub Actions security (online)
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Audit workflows with zizmor online audits
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ZIZMOR_ONLINE: "1"
+          USE_CONTAINERS: "1"
+        run: make actions-security
+
   # Computes two image matrices from docker-compose.yml (via "docker compose config", the
   # same technique make trivy/compose-validate use), rather than a hardcoded list in this
   # file - so a new/changed service is scanned automatically, with no risk of the workflow

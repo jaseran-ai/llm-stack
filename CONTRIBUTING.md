@@ -58,7 +58,7 @@ make yamllint
 make markdown-links
 make no-french
 make compose-validate
-make actions-security  # actionlint + zizmor security audit of .github/ (set GH_TOKEN for online audits)
+make actions-security  # actionlint + zizmor audit of .github/ (ZIZMOR_ONLINE=1 GH_TOKEN=... for online audits)
 make trivy          # not part of "make lint" (pulls & scans every image, much slower);
                      # requires the trivy CLI: https://aquasecurity.github.io/trivy/latest/getting-started/installation/
 ```
