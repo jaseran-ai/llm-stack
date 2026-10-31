@@ -408,7 +408,7 @@ services:
 
   langfuse-web:
     logging: *default-logging
-    image: langfuse/langfuse:4.63.0@sha256:67f48d12a190e4ad585249c75ae1ce172b449de3dbbe7486b8179cd28e21408e
+    image: langfuse/langfuse:4.69.0@sha256:e4cc4bfd0f77285d7454135e1bd14020abdd5c4217a2f0e824b8abcbf3e3cc0f
     container_name: langfuse-web
     restart: always
     env_file:
