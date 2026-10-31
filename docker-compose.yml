@@ -99,7 +99,7 @@ services:
           memory: 1024M
   ollama:
     logging: *default-logging
-    image: ollama/ollama:0.40.5@sha256:5d3a2f25f9825628daba94dc0b1d421c7d57d6c03ae5faa9ba050e058bab8241
+    image: ollama/ollama:0.40.10@sha256:4c5b27871a3239a717048f9b93057680a51b60c8119a7016aebb57f938e25e35
     container_name: ollama
     restart: unless-stopped
     # No GPU reservation on purpose: this is meant to run on the widest possible range of
