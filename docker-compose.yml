@@ -337,7 +337,7 @@ services:
 
   langfuse-worker:
     logging: *default-logging
-    image: langfuse/langfuse-worker:4.63.0@sha256:ca32a8fb2a214c7b5f42dd9c540c8072e41db659cb621f317911ce695ad6bca2
+    image: langfuse/langfuse-worker:4.69.0@sha256:48f8af2c4b6bbf929380f301ade18cf99e7b31331fd26dfaf253ce670e5b39a2
     container_name: langfuse-worker
     restart: always
     env_file:
